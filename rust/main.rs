@@ -12,7 +12,7 @@ use std::sync::{Arc, atomic::{AtomicBool, Ordering}, Barrier};
 
 
 /// id: usize: A unique number (integer) identifying this worker thread, used for logging. (for x64-86 it's 64-bit, for x32 it's 32-bit, basically depends on a hardware)
-/// `stop_flag: Arc<AtomicBool>`: Shared signal watched by this worker. When set to true, the worker stops.
+/// stop_flag: Arc<AtomicBool>`: Shared signal watched by this worker. When set to true, the worker stops.
 fn brute_force_worker(id: usize, stop_flag: Arc<AtomicBool>, barrier: Arc<Barrier>) {
     println!("✅ Starting worker thread {}:{}", std::process::id(), id);
     barrier.wait();
@@ -52,7 +52,7 @@ fn main() {
     let minutes = 1;
     let seconds = minutes * 60;
 
-    // `num_cpus::get()` returns the number of cpu threads.
+    // num_cpus::get() returns the number of cpu threads.
     let num_cores = num_cpus::get();
 
     println!("============================================================");
@@ -69,14 +69,14 @@ fn main() {
     let stop_signal = Arc::new(AtomicBool::new(false)); // Arc::new - takes that atomic boolean and wraps it inside an Arc
                                                         // (a special pointer that allows many threads to share ownership safely).
                                                         
-                                                        // AtomicBool::new(false) - creates a new atomic boolean set to false (meaning: "don’t stop yet").
+                                                        // AtomicBool::new(false) - creates a new atomic boolean set to false.
 
 
 
     // Ctrl+C Interrupt Handler
     // We need to handle the case where the user presses Ctrl+C.
-    // We `clone` the `Arc` for the handler. This increases the reference count,
-    // allowing the handler to share ownership of the `stop_signal`.
+    // We clone the Arc for the handler. This increases the reference count,
+    // allowing the handler to share ownership of the stop_signal.
     let handler_stop_signal = Arc::clone(&stop_signal);
     ctrlc::set_handler(move || {
         println!("\n🛑 User interruption detected. Sending stop signal...");

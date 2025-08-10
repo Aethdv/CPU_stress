@@ -39,27 +39,25 @@ fn brute_force_worker(id: usize, stop_flag: Arc<AtomicBool>, barrier: Arc<Barrie
                 }
                 
                let _ = i * j; // intentionally ignoring the value and multiply i with j
-                               // we ignore the value to not store it anywhere and uh, use it?
+                               // we ignore the value to not store it anywhere and use it
             }
         }
     }
 
-    println!("🛑 Worker thread {}:{} stopping.", std::process::id(), id); // The colon is for visual formatting bs
+    println!("🛑 Worker thread {}:{} stopping.", std::process::id(), id);
 }
 
 fn main() {
-    // Configuration
     let minutes = 1;
     let seconds = minutes * 60;
 
-    // num_cpus::get() returns the number of cpu threads.
     let num_cores = num_cpus::get();
 
     println!("============================================================");
     println!("☢️ CPU STRESS TEST ☢️");
     println!("Detected {} threads. A worker will be created for each.", num_cores);
     println!("The test will run for {} minutes.", minutes);
-    println!("WARNING: This is designed to push your CPU to 100% load.");
+    println!("WARNING: It will push your CPU to 100% load.");
     println!("Monitor your temperatures. Press Ctrl+C to stop.");
     println!("============================================================");
 
@@ -92,8 +90,8 @@ fn main() {
     for i in 0..num_cores { // e.g 16 threads, counts from 0 to 15
 
         let worker_stop_signal = Arc::clone(&stop_signal); // new pointer to the same shared stop flag so each thread can use it safely without copying the data.
-                                                          // clone is "just copy bits blindly"
-                                                          // copy is "make a new handle and update ownership info".
+                                                           // clone is "just copy bits blindly"
+                                                           // copy is "make a new handle and update ownership info".
         let worker_barrier = Arc::clone(&barrier);
 
         let handle = thread::spawn(move || { // spawns new threads in parallel, each call is one new thread

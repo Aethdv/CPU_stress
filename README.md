@@ -1,6 +1,7 @@
 # CPU Stress Test v1.0.0
 
-CPU stress testing tool with computational multi-workload types. (Targeting ~99-100% load, I recommend using btop or equivalent for monitoring your temperatures).
+CPU stress testing tool with computational multi-workload types.<br>
+(Targeting ~99-100% load, I recommend using btop or equivalent for monitoring your temperatures).
 
 ## Requirements
 

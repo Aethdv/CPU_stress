@@ -21,6 +21,10 @@ struct Args {
     #[arg(short, long, default_value = "mixed")]
     workload: String,
 
+    /// Memory buffer size in MB (0 = auto-detect 4x L3 cache, fallback 128MB)
+    #[arg(short = 'm', long, default_value_t = 0)]
+    memory_mb: usize,
+
     /// Work batch size (iterations per check)
     #[arg(short, long, default_value_t = 100_000)]
     batch_size: u64,
@@ -28,6 +32,218 @@ struct Args {
     /// Disable progress reporting
     #[arg(short, long)]
     quiet: bool,
+}
+
+/// Auto-detect L3 cache size and return recommended memory buffer size
+/// Returns size in MB (4x L3 cache size, or fallback to 128MB)
+fn detect_memory_size() -> usize {
+    // Try platform-specific detection
+    if let Some(l3_mb) = detect_l3_cache() {
+        let recommended = (l3_mb * 4).max(128);
+        eprintln!("[Auto-detect] L3 cache: {} MB → Using {} MB buffer", l3_mb, recommended);
+        return recommended;
+    }
+
+    // Fallback: heuristic based on CPU count
+    let num_cpus = num_cpus::get();
+    let heuristic_mb = match num_cpus {
+        1..=4 => 128,
+        5..=8 => 192,
+        9..=16 => 256,
+        17..=32 => 384,
+        33..=64 => 512,
+        _ => 768,
+    };
+    
+    eprintln!("[Auto-detect] L3 cache unknown → Using heuristic {} MB (based on {} CPUs)", 
+              heuristic_mb, num_cpus);
+    heuristic_mb
+}
+
+/// Cross-platform L3 cache detection
+fn detect_l3_cache() -> Option<usize> {
+    #[cfg(target_os = "linux")]
+    {
+        detect_l3_cache_linux()
+    }
+    
+    #[cfg(target_os = "windows")]
+    {
+        detect_l3_cache_windows()
+    }
+    
+    #[cfg(target_os = "macos")]
+    {
+        detect_l3_cache_macos()
+    }
+    
+    #[cfg(not(any(target_os = "linux", target_os = "windows", target_os = "macos")))]
+    {
+        None
+    }
+}
+
+/// Detect L3 cache size on Linux via sysfs
+#[cfg(target_os = "linux")]
+fn detect_l3_cache_linux() -> Option<usize> {
+    use std::fs;
+    
+    // Try reading L3 cache size from sysfs
+    // Path: /sys/devices/system/cpu/cpu0/cache/index{N}/size
+    // L3 is usually index 3, but can vary
+    
+    for index in 0..=10 {
+        let level_path = format!("/sys/devices/system/cpu/cpu0/cache/index{}/level", index);
+        let size_path = format!("/sys/devices/system/cpu/cpu0/cache/index{}/size", index);
+        
+        if let Ok(level) = fs::read_to_string(&level_path) {
+            if level.trim() == "3" {
+                if let Ok(size_str) = fs::read_to_string(&size_path) {
+                    if let Some(mb) = parse_cache_size(&size_str) {
+                        return Some(mb);
+                    }
+                }
+            }
+        }
+    }
+    
+    None
+}
+
+/// Detect L3 cache size on Windows via Win32 API
+#[cfg(target_os = "windows")]
+fn detect_l3_cache_windows() -> Option<usize> {
+    use windows_sys::Win32::System::SystemInformation::{
+        GetLogicalProcessorInformationEx, RelationCache, 
+        SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX,
+    };
+    use std::mem;
+    
+    unsafe {
+        let mut buffer_size: u32 = 0;
+        
+        // First call to get required buffer size
+        GetLogicalProcessorInformationEx(RelationCache, std::ptr::null_mut(), &mut buffer_size);
+        
+        if buffer_size == 0 {
+            return None;
+        }
+        
+        // Allocate buffer
+        let mut buffer = vec![0u8; buffer_size as usize];
+        let buffer_ptr = buffer.as_mut_ptr() as *mut SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX;
+        
+        // Second call to get actual data
+        if GetLogicalProcessorInformationEx(RelationCache, buffer_ptr, &mut buffer_size) == 0 {
+            return None;
+        }
+        
+        // Parse the buffer to find L3 cache
+        let mut offset = 0usize;
+        while offset + mem::size_of::<SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>() <= buffer_size as usize {
+            let info = &*(buffer.as_ptr().add(offset) as *const SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX);
+            
+            if info.Relationship == RelationCache {
+                // Access cache information
+                // The structure has a union, Cache is at offset after Relationship and Size
+                let cache_info_ptr = (info as *const SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX as usize 
+                    + mem::size_of::<u32>()  // Relationship
+                    + mem::size_of::<u32>()) // Size
+                    as *const CacheDescriptor;
+                
+                let cache = &*cache_info_ptr;
+                
+                // Level 3 cache
+                if cache.Level == 3 {
+                    let size_mb = cache.CacheSize / (1024 * 1024);
+                    if size_mb > 0 {
+                        return Some(size_mb as usize);
+                    }
+                }
+            }
+            
+            offset += info.Size as usize;
+        }
+    }
+    
+    None
+}
+
+// Helper struct for Windows cache descriptor
+#[cfg(target_os = "windows")]
+#[repr(C)]
+struct CacheDescriptor {
+    Level: u8,
+    Associativity: u8,
+    LineSize: u16,
+    CacheSize: u32,
+    Type: u32,
+}
+
+/// Detect L3 cache size on macOS via sysctl
+#[cfg(target_os = "macos")]
+fn detect_l3_cache_macos() -> Option<usize> {
+    use std::process::Command;
+    
+    // Try sysctl hw.l3cachesize
+    if let Ok(output) = Command::new("sysctl")
+        .arg("-n")
+        .arg("hw.l3cachesize")
+        .output() 
+    {
+        if output.status.success() {
+            if let Ok(size_str) = String::from_utf8(output.stdout) {
+                if let Ok(size_bytes) = size_str.trim().parse::<usize>() {
+                    if size_bytes > 0 {
+                        return Some(size_bytes / (1024 * 1024));
+                    }
+                }
+            }
+        }
+    }
+    
+    // Fallback: try parsing sysctl -a output
+    if let Ok(output) = Command::new("sysctl")
+        .arg("hw.cachesize")
+        .output()
+    {
+        if output.status.success() {
+            if let Ok(output_str) = String::from_utf8(output.stdout) {
+                // Output format: hw.cachesize: 65536 32768 262144 0 0 0 0 0 0 0
+                // Index 2 is L3 cache size in bytes
+                for line in output_str.lines() {
+                    if line.starts_with("hw.cachesize:") {
+                        let parts: Vec<&str> = line.split_whitespace().collect();
+                        if parts.len() > 3 {
+                            if let Ok(l3_bytes) = parts[3].parse::<usize>() {
+                                if l3_bytes > 0 {
+                                    return Some(l3_bytes / (1024 * 1024));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    None
+}
+
+/// Parse cache size string like "8192K" or "12M" into MB
+fn parse_cache_size(s: &str) -> Option<usize> {
+    let s = s.trim();
+    
+    if s.ends_with('K') || s.ends_with('k') {
+        let kb: usize = s[..s.len()-1].parse().ok()?;
+        Some(kb / 1024)
+    } else if s.ends_with('M') || s.ends_with('m') {
+        s[..s.len()-1].parse().ok()
+    } else {
+        // Assume bytes
+        let bytes: usize = s.parse().ok()?;
+        Some(bytes / (1024 * 1024))
+    }
 }
 
 /// Prevent compiler from optimizing away our stress work
@@ -54,13 +270,43 @@ fn stress_float(iterations: u64, accumulator: &mut f64) {
     }
 }
 
+/// True memory stress using pointer-chasing to prevent prefetch
+/// Buffer should be >> L3 cache size to force memory subsystem pressure
 #[inline(always)]
-fn stress_memory(iterations: u64, buffer: &mut [u64; 4096]) {
-    for i in 0..iterations {
-        let idx = (i as usize) & 4095;
-        // Cache-thrashing pattern
-        buffer[idx] = black_box(buffer[idx].wrapping_mul(6364136223846793005_u64).wrapping_add(1));
+fn stress_memory(iterations: u64, buffer: &mut [u64]) {
+    if buffer.is_empty() {
+        return;
     }
+    
+    let len = buffer.len();
+    let mut index = 0usize;
+    
+    for i in 0..iterations {
+        // Pointer-chasing: next index depends on current value
+        // This prevents prefetching and forces dependent loads
+        let value = black_box(buffer[index]);
+        
+        // Update with LCG and use high bits for next index
+        let new_value = value.wrapping_mul(6364136223846793005_u64).wrapping_add(i);
+        buffer[index] = black_box(new_value);
+        
+        // Use high-entropy bits for next index (avoid modulo bias)
+        // XOR with iteration counter to ensure coverage
+        index = black_box(((new_value >> 17) ^ i) as usize % len);
+    }
+}
+
+/// Allocate memory buffer based on MB size
+/// Returns a boxed slice to avoid stack overflow
+fn allocate_memory_buffer(size_mb: usize) -> Box<[u64]> {
+    let num_elements = (size_mb * 1024 * 1024) / std::mem::size_of::<u64>();
+    
+    // Initialize with non-zero pattern to avoid CoW optimizations
+    let mut buffer = Vec::with_capacity(num_elements);
+    for i in 0..num_elements {
+        buffer.push(i as u64 ^ 0xDEADBEEF);
+    }
+    buffer.into_boxed_slice()
 }
 
 fn worker_thread(
@@ -69,10 +315,11 @@ fn worker_thread(
     work_counter: Arc<AtomicU64>,
     workload: String,
     batch_size: u64,
+    memory_mb: usize,
 ) {
     let mut int_acc:   u64 = id as u64;
     let mut float_acc: f64 = id as f64;
-    let mut mem_buffer     = [0u64; 4096];
+    let mut mem_buffer = allocate_memory_buffer(memory_mb);
 
     loop {
         if stop_flag.load(Ordering::Relaxed) {
@@ -82,7 +329,7 @@ fn worker_thread(
         match workload.as_str() {
             "integer" => stress_integer(batch_size, &mut int_acc),
             "float"   => stress_float(batch_size,   &mut float_acc),
-            "memory"  => stress_memory(batch_size,  &mut mem_buffer),
+            "memory"  => stress_memory(batch_size, &mut mem_buffer),
             _ => {
                 // Mixed workload
                 stress_integer(batch_size / 3, &mut int_acc);
@@ -121,6 +368,12 @@ fn main() {
         args.threads
     };
 
+    let memory_mb = if args.memory_mb == 0 {
+        detect_memory_size()
+    } else {
+        args.memory_mb
+    };
+
     let workload = match args.workload.as_str() {
         "integer" | "float" | "memory" | "mixed" => args.workload.clone(),
         _ => {
@@ -130,11 +383,14 @@ fn main() {
     };
 
     println!("════════════════════════════════════════════════════════════");
-    println!("  CPU STRESS TEST v1.0.0");
+    println!("  CPU STRESS TEST v1.1.0");
     println!("════════════════════════════════════════════════════════════");
     println!("  Threads:    {}", num_threads);
     println!("  Workload:   {}", workload);
     println!("  Batch size: {}", format_number(args.batch_size));
+    println!("  Memory buf: {} MB per thread{}", 
+             memory_mb,
+             if args.memory_mb == 0 { " (auto-detected)" } else { "" });
     println!(
         "  Duration:   {}",
         if args.duration == 0 {
@@ -165,9 +421,10 @@ fn main() {
         let counter = Arc::clone(&work_counter);
         let wl      = workload.clone();
         let batch   = args.batch_size;
+        let mem_mb  = memory_mb;
 
         let handle  = thread::spawn(move || {
-            worker_thread(id, stop, counter, wl, batch);
+            worker_thread(id, stop, counter, wl, batch, mem_mb);
         });
         handles.push(handle);
     }
@@ -244,6 +501,16 @@ fn main() {
     println!("  Elapsed:       {:.2}s", elapsed.as_secs_f64());
     println!("  Total ops:     {}",   format_number(total_ops));
     println!("  Avg rate:      {}/s", format_number(ops_per_sec));
+    
+    // Show bandwidth for memory workload
+    if workload == "memory" {
+        // Each op: 1 read + 1 write = 16 bytes
+        let bytes_transferred = total_ops * 16;
+        let gb_per_sec = (bytes_transferred as f64) / elapsed.as_secs_f64() / 1_000_000_000.0;
+        println!("  Memory BW:     {:.2} GB/s", gb_per_sec);
+        println!("               (estimated, 16B per op: 8B read + 8B write)");
+    }
+    
     println!("════════════════════════════════════════════════════════════");
 }
 
@@ -269,7 +536,7 @@ mod tests {
 
     #[test]
     fn test_stress_memory_modifies_buffer() {
-        let mut buffer = [0u64; 4096];
+        let mut buffer = vec![0u64; 16384].into_boxed_slice();
         stress_memory(10000, &mut buffer);
         let non_zero_count = buffer.iter().filter(|&&x| x != 0).count();
         assert!(
@@ -287,7 +554,7 @@ mod tests {
         let counter_clone = Arc::clone(&counter);
 
         let handle = thread::spawn(move || {
-            worker_thread(0, stop_clone, counter_clone, "integer".to_string(), 10000);
+            worker_thread(0, stop_clone, counter_clone, "integer".to_string(), 10000, 1);
         });
 
         thread::sleep(Duration::from_millis(50));
@@ -330,7 +597,7 @@ mod tests {
             let s = Arc::clone(&stop);
             let c = Arc::clone(&counter);
             handles.push(thread::spawn(move || {
-                worker_thread(id, s, c, "mixed".to_string(), 5000);
+                worker_thread(id, s, c, "mixed".to_string(), 5000, 1);
             }));
         }
 
@@ -343,5 +610,58 @@ mod tests {
 
         let ops = counter.load(Ordering::Relaxed);
         assert!(ops > 10000, "Multi-threaded work should accumulate");
+    }
+
+    #[test]
+    fn test_memory_buffer_allocation() {
+        let buffer = allocate_memory_buffer(1); // 1 MB
+        let expected_elements = (1 * 1024 * 1024) / 8;
+        assert_eq!(buffer.len(), expected_elements);
+        
+        // Verify non-zero initialization
+        let all_zero = buffer.iter().all(|&x| x == 0);
+        assert!(!all_zero, "Buffer should be initialized with non-zero pattern");
+    }
+
+    #[test]
+    fn test_memory_workload_pointer_chasing() {
+        // Verify that memory accesses are actually pseudo-random
+        let mut buffer = vec![0u64; 1024].into_boxed_slice();
+        
+        // Track which indices are accessed
+        let mut accessed = vec![false; buffer.len()];
+        let mut index = 0usize;
+        
+        for i in 0..100 {
+            accessed[index] = true;
+            let value = buffer[index].wrapping_mul(6364136223846793005_u64).wrapping_add(i);
+            buffer[index] = value;
+            index = ((value >> 17) ^ i) as usize % buffer.len();
+        }
+        
+        let coverage = accessed.iter().filter(|&&x| x).count();
+        assert!(coverage > 50, "Should access diverse indices, got {}", coverage);
+    }
+
+    #[test]
+    fn test_parse_cache_size() {
+        assert_eq!(parse_cache_size("8192K"), Some(8));
+        assert_eq!(parse_cache_size("16384K"), Some(16));
+        assert_eq!(parse_cache_size("12M"), Some(12));
+        assert_eq!(parse_cache_size("256M"), Some(256));
+        assert_eq!(parse_cache_size("8388608"), Some(8)); // 8MB in bytes
+    }
+
+    #[test]
+    fn test_detect_memory_size_returns_reasonable_value() {
+        let size = detect_memory_size();
+        assert!(size >= 128, "Auto-detect should return at least 128MB");
+        assert!(size <= 2048, "Auto-detect should return at most 2GB");
+    }
+
+    #[test]
+    fn test_cross_platform_detection_doesnt_panic() {
+        // This should work on any platform without panicking
+        let _ = detect_l3_cache();
     }
 }

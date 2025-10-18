@@ -24,14 +24,19 @@ fn stress_float(iterations: u64, accumulator: &mut f64) {
 }
 
 #[inline(always)]
-fn stress_memory(iterations: u64, buffer: &mut [u64; 4096]) {
+fn stress_memory(iterations: u64, buffer: &mut [u64]) {
+    if buffer.is_empty() {
+        return;
+    }
+    
+    let len = buffer.len();
+    let mut index = 0usize;
+    
     for i in 0..iterations {
-        let idx     = (i as usize) & 4095;
-        buffer[idx] = std_black_box(
-            buffer[idx]
-                .wrapping_mul(6364136223846793005_u64)
-                .wrapping_add(1),
-        );
+        let value = std_black_box(buffer[index]);
+        let new_value = value.wrapping_mul(6364136223846793005_u64).wrapping_add(i);
+        buffer[index] = std_black_box(new_value);
+        index = std_black_box(((new_value >> 17) ^ i) as usize % len);
     }
 }
 
@@ -57,11 +62,24 @@ fn bench_float_workload(c: &mut Criterion) {
 
 fn bench_memory_workload(c: &mut Criterion) {
     c.bench_function("stress_memory_10k", |b| {
+        // Use 1MB buffer for benchmark (small enough for fast bench, large enough to hit L2/L3)
+        let mut buffer = vec![0u64; 128 * 1024].into_boxed_slice();
+        
         b.iter(|| {
-            let mut buffer = [0u64; 4096];
             stress_memory(black_box(10_000), &mut buffer);
-            buffer
         });
+    });
+    
+    c.bench_function("stress_memory_small_l1", |b| {
+        // 32KB - fits in L1
+        let mut buffer = vec![0u64; 4096].into_boxed_slice();
+        b.iter(|| stress_memory(black_box(10_000), &mut buffer));
+    });
+    
+    c.bench_function("stress_memory_large_l3", |b| {
+        // 8MB - exceeds typical L2, may exceed L3 on some CPUs
+        let mut buffer = vec![0u64; 1024 * 1024].into_boxed_slice();
+        b.iter(|| stress_memory(black_box(10_000), &mut buffer));
     });
 }
 

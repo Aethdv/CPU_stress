@@ -45,32 +45,6 @@ struct WorkloadResult {
     ops_per_sec: u64,
 }
 
-/// Auto-detect L3 cache size and return recommended memory buffer size
-/// Returns size in MB (4x L3 cache size, or fallback to 128MB)
-fn detect_memory_size() -> usize {
-    // Try platform-specific detection
-    if let Some(l3_mb) = detect_l3_cache() {
-        let recommended = (l3_mb * 4).max(128);
-        eprintln!("[Auto-detect] L3 cache: {} MB → Using {} MB buffer", l3_mb, recommended);
-        return recommended;
-    }
-
-    // Fallback: heuristic based on CPU count
-    let num_cpus = num_cpus::get();
-    let heuristic_mb = match num_cpus {
-        1..=4 => 128,
-        5..=8 => 192,
-        9..=16 => 256,
-        17..=32 => 384,
-        33..=64 => 512,
-        _ => 768,
-    };
-    
-    eprintln!("[Auto-detect] L3 cache unknown → Using heuristic {} MB (based on {} CPUs)", 
-              heuristic_mb, num_cpus);
-    heuristic_mb
-}
-
 /// Cross-platform L3 cache detection
 fn detect_l3_cache() -> Option<usize> {
     #[cfg(target_os = "linux")]
@@ -255,6 +229,111 @@ fn parse_cache_size(s: &str) -> Option<usize> {
         let bytes: usize = s.parse().ok()?;
         Some(bytes / (1024 * 1024))
     }
+}
+
+/// Get total system RAM in MB
+fn get_total_system_ram_mb() -> Option<usize> {
+    #[cfg(target_os = "linux")]
+    {
+        use std::fs;
+        // Read /proc/meminfo
+        if let Ok(contents) = fs::read_to_string("/proc/meminfo") {
+            for line in contents.lines() {
+                if line.starts_with("MemTotal:") {
+                    let parts: Vec<&str> = line.split_whitespace().collect();
+                    if parts.len() >= 2 {
+                        if let Ok(kb) = parts[1].parse::<usize>() {
+                            return Some(kb / 1024);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    #[cfg(target_os = "windows")]
+    {
+        use windows_sys::Win32::System::SystemInformation::{GlobalMemoryStatusEx, MEMORYSTATUSEX};
+        use std::mem;
+        
+        unsafe {
+            let mut mem_info: MEMORYSTATUSEX = mem::zeroed();
+            mem_info.dwLength = mem::size_of::<MEMORYSTATUSEX>() as u32;
+            
+            if GlobalMemoryStatusEx(&mut mem_info) != 0 {
+                let total_mb = (mem_info.ullTotalPhys / (1024 * 1024)) as usize;
+                return Some(total_mb);
+            }
+        }
+    }
+    
+    #[cfg(target_os = "macos")]
+    {
+        use std::process::Command;
+        
+        if let Ok(output) = Command::new("sysctl")
+            .arg("-n")
+            .arg("hw.memsize")
+            .output()
+        {
+            if output.status.success() {
+                if let Ok(size_str) = String::from_utf8(output.stdout) {
+                    if let Ok(size_bytes) = size_str.trim().parse::<usize>() {
+                        return Some(size_bytes / (1024 * 1024));
+                    }
+                }
+            }
+        }
+    }
+    
+    None
+}
+
+/// Auto-detect L3 cache size and return recommended memory buffer size
+/// Returns size in MB (4x L3 cache, minimum 32 MB, validated against system RAM)
+fn detect_memory_size() -> usize {
+    let num_cpus = num_cpus::get();
+    
+    // Try platform-specific L3 cache detection
+    if let Some(l3_mb) = detect_l3_cache() {
+        let recommended = (l3_mb * 4).max(32);
+        
+        // Sanity check: ensure total allocation won't exceed 80% of system RAM
+        if let Some(total_ram_mb) = get_total_system_ram_mb() {
+            let total_allocation_mb = recommended * num_cpus;
+            let max_safe_mb = ((total_ram_mb as f64) * 0.8) as usize;
+            
+            if total_allocation_mb > max_safe_mb {
+                let adjusted = (max_safe_mb / num_cpus).max(32);
+                eprintln!("[Auto-detect] L3 cache: {} MB → Calculated {} MB buffer per thread", l3_mb, recommended);
+                eprintln!("[Warning] Total allocation would be {} MB ({} threads × {} MB)", 
+                          total_allocation_mb, num_cpus, recommended);
+                eprintln!("[Warning] Exceeds 80% of system RAM ({} MB total, {} MB limit)", 
+                          total_ram_mb, max_safe_mb);
+                eprintln!("[Auto-detect] Reducing to {} MB per thread (total: {} MB)", 
+                          adjusted, adjusted * num_cpus);
+                return adjusted;
+            }
+        }
+        
+        eprintln!("[Auto-detect] L3 cache: {} MB → Using {} MB buffer per thread", l3_mb, recommended);
+        return recommended;
+    }
+
+    let heuristic_mb = match num_cpus {
+        1..=2 => 32,    // Old single/dual-core (Athlon, Pentium)
+        3..=4 => 64,    // Older quad-core (Ryzen 3 1200, i5-7400)
+        5..=8 => 128,   // Mainstream (Ryzen 5, i7)
+        9..=16 => 192,  // High-end desktop (Ryzen 7, i9)
+        17..=32 => 256, // HEDT (Threadripper, Xeon W)
+        33..=64 => 512,
+        65..=128 => 768,
+        _ => 1024,
+    };
+    
+    eprintln!("[Auto-detect] L3 cache unknown → Using heuristic {} MB (based on {} CPUs)", 
+              heuristic_mb, num_cpus);
+    heuristic_mb
 }
 
 /// Prevent compiler from optimizing away our stress work
@@ -564,7 +643,7 @@ fn main() {
         }
 
         println!("════════════════════════════════════════════════════════════");
-        println!("  CPU STRESS BENCHMARK v1.1.1");
+        println!("  CPU STRESS BENCHMARK v1.1.2");
         println!("════════════════════════════════════════════════════════════");
         println!("  Threads:    {}", num_threads);
         println!("  Memory buf: {} MB per thread", memory_mb);
@@ -602,7 +681,7 @@ fn main() {
     };
 
     println!("════════════════════════════════════════════════════════════");
-    println!("  CPU STRESS TEST v1.1.1);
+    println!("  CPU STRESS TEST v1.1.2");
     println!("════════════════════════════════════════════════════════════");
     println!("  Threads:    {}", num_threads);
     println!("  Workload:   {}", workload);
@@ -869,12 +948,42 @@ mod tests {
     #[test]
     fn test_detect_memory_size_returns_reasonable_value() {
         let size = detect_memory_size();
-        assert!(size >= 128, "Auto-detect should return at least 128MB");
-        assert!(size <= 2048, "Auto-detect should return at most 2GB");
+        assert!(size >= 32, "Auto-detect should return at least 32MB");
     }
 
     #[test]
     fn test_cross_platform_detection_doesnt_panic() {
         let _ = detect_l3_cache();
+    }
+
+    #[test]
+    fn test_get_total_system_ram() {
+        // Should detect some RAM on any system
+        if let Some(ram_mb) = get_total_system_ram_mb() {
+            assert!(ram_mb >= 512, "Should detect at least 512 MB RAM, got {}", ram_mb);
+            assert!(ram_mb <= 2_097_152, "Unlikely to have >2 TB RAM, got {} MB", ram_mb);
+        }
+        // If detection fails, that's OK (might be in restricted environment)
+    }
+
+    #[test]
+    fn test_ram_aware_memory_size() {
+        // Auto-detect should always return a reasonable value
+        let size = detect_memory_size();
+        assert!(size >= 32, "Should be at least 32 MB");
+        
+        // Even on high-core systems, shouldn't be absurdly large
+        let num_cpus = num_cpus::get();
+        let total = size * num_cpus;
+        
+        // Total allocation shouldn't exceed reasonable bounds
+        if let Some(ram_mb) = get_total_system_ram_mb() {
+            let max_reasonable = ((ram_mb as f64) * 0.9) as usize;
+            assert!(
+                total <= max_reasonable,
+                "Total allocation {} MB should not exceed 90% of RAM ({} MB)",
+                total, ram_mb
+            );
+        }
     }
 }

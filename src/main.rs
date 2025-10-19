@@ -21,9 +21,16 @@ struct Args {
     #[arg(short, long, default_value = "mixed")]
     workload: String,
 
-    /// Memory buffer size in MB (0 = auto-detect 4x L3 cache, fallback 128MB)
+    /// Memory buffer size in MB (0 = auto-detect, overrides -x)
     #[arg(short = 'm', long, default_value_t = 0)]
     memory_mb: usize,
+
+    /// Memory buffer multiplier for auto-detect (L3 cache × multiplier)
+    /// Common values: 2=light, 4=balanced, 8=aggressive, 16=extreme
+    //  it is considered that 4 is for latency testing
+    //  while 8 is more on the stress testing side
+    #[arg(short = 'x', long, default_value_t = 4)]
+    memory_multiplier: usize,
 
     /// Work batch size (iterations per check)
     #[arg(short, long, default_value_t = 100_000)]
@@ -231,7 +238,7 @@ fn parse_cache_size(s: &str) -> Option<usize> {
     }
 }
 
-/// Get total system RAM in MB
+/// Get total system RAM in MB (cross-platform)
 fn get_total_system_ram_mb() -> Option<usize> {
     #[cfg(target_os = "linux")]
     {
@@ -290,13 +297,13 @@ fn get_total_system_ram_mb() -> Option<usize> {
 }
 
 /// Auto-detect L3 cache size and return recommended memory buffer size
-/// Returns size in MB (4x L3 cache, minimum 32 MB, validated against system RAM)
-fn detect_memory_size() -> usize {
+/// Returns size in MB (multiplier × L3 cache, minimum 32 MB, validated against system RAM)
+fn detect_memory_size(multiplier: usize) -> usize {
     let num_cpus = num_cpus::get();
     
     // Try platform-specific L3 cache detection
     if let Some(l3_mb) = detect_l3_cache() {
-        let recommended = (l3_mb * 4).max(32);
+        let recommended = (l3_mb * multiplier).max(32);
         
         // Sanity check: ensure total allocation won't exceed 80% of system RAM
         if let Some(total_ram_mb) = get_total_system_ram_mb() {
@@ -305,7 +312,8 @@ fn detect_memory_size() -> usize {
             
             if total_allocation_mb > max_safe_mb {
                 let adjusted = (max_safe_mb / num_cpus).max(32);
-                eprintln!("[Auto-detect] L3 cache: {} MB → Calculated {} MB buffer per thread", l3_mb, recommended);
+                eprintln!("[Auto-detect] L3 cache: {} MB → Calculated {} MB buffer per thread ({}x multiplier)", 
+                          l3_mb, recommended, multiplier);
                 eprintln!("[Warning] Total allocation would be {} MB ({} threads × {} MB)", 
                           total_allocation_mb, num_cpus, recommended);
                 eprintln!("[Warning] Exceeds 80% of system RAM ({} MB total, {} MB limit)", 
@@ -316,23 +324,29 @@ fn detect_memory_size() -> usize {
             }
         }
         
-        eprintln!("[Auto-detect] L3 cache: {} MB → Using {} MB buffer per thread", l3_mb, recommended);
+        eprintln!("[Auto-detect] L3 cache: {} MB → Using {} MB buffer per thread ({}x multiplier)", 
+                  l3_mb, recommended, multiplier);
         return recommended;
     }
 
-    let heuristic_mb = match num_cpus {
-        1..=2 => 32,    // Old single/dual-core (Athlon, Pentium)
-        3..=4 => 64,    // Older quad-core (Ryzen 3 1200, i5-7400)
-        5..=8 => 128,   // Mainstream (Ryzen 5, i7)
-        9..=16 => 192,  // High-end desktop (Ryzen 7, i9)
-        17..=32 => 256, // HEDT (Threadripper, Xeon W)
+    // Fallback: heuristic based on CPU count (multiplier affects these too)
+    let base_heuristic = match num_cpus {
+        1..=2 => 32,
+        3..=4 => 64,
+        5..=8 => 128,
+        9..=16 => 192,
+        17..=32 => 256,
         33..=64 => 512,
         65..=128 => 768,
         _ => 1024,
     };
     
-    eprintln!("[Auto-detect] L3 cache unknown → Using heuristic {} MB (based on {} CPUs)", 
-              heuristic_mb, num_cpus);
+    // Scale heuristic by multiplier / 4 (since base is ~4x thinking)
+    let scaled = ((base_heuristic as f64) * (multiplier as f64 / 4.0)) as usize;
+    let heuristic_mb = scaled.max(32);
+    
+    eprintln!("[Auto-detect] L3 cache unknown → Using heuristic {} MB ({}x multiplier, {} CPUs)", 
+              heuristic_mb, multiplier, num_cpus);
     heuristic_mb
 }
 
@@ -630,7 +644,7 @@ fn main() {
     };
 
     let memory_mb = if args.memory_mb == 0 {
-        detect_memory_size()
+        detect_memory_size(args.memory_multiplier)
     } else {
         args.memory_mb
     };
@@ -643,10 +657,16 @@ fn main() {
         }
 
         println!("════════════════════════════════════════════════════════════");
-        println!("  CPU STRESS BENCHMARK v1.1.2");
+        println!("  CPU STRESS BENCHMARK v1.1.3");
         println!("════════════════════════════════════════════════════════════");
         println!("  Threads:    {}", num_threads);
-        println!("  Memory buf: {} MB per thread", memory_mb);
+        
+        if args.memory_mb == 0 {
+            println!("  Memory buf: {} MB per thread ({}x multiplier)", memory_mb, args.memory_multiplier);
+        } else {
+            println!("  Memory buf: {} MB per thread (manual)", memory_mb);
+        }
+        
         println!("  Batch size: {}", format_number(args.batch_size));
         println!("  Duration:   {}s per workload", args.duration);
         println!("  Total time: ~{}s (4 workloads)", args.duration * 4);
@@ -681,14 +701,18 @@ fn main() {
     };
 
     println!("════════════════════════════════════════════════════════════");
-    println!("  CPU STRESS TEST v1.1.2");
+    println!("  CPU STRESS TEST v1.1.3");
     println!("════════════════════════════════════════════════════════════");
     println!("  Threads:    {}", num_threads);
     println!("  Workload:   {}", workload);
     println!("  Batch size: {}", format_number(args.batch_size));
-    println!("  Memory buf: {} MB per thread{}", 
-             memory_mb,
-             if args.memory_mb == 0 { " (auto-detected)" } else { "" });
+    
+    if args.memory_mb == 0 {
+        println!("  Memory buf: {} MB per thread ({}x multiplier)", memory_mb, args.memory_multiplier);
+    } else {
+        println!("  Memory buf: {} MB per thread (manual)", memory_mb);
+    }
+    
     println!(
         "  Duration:   {}",
         if args.duration == 0 {
@@ -946,8 +970,9 @@ mod tests {
     }
 
     #[test]
-    fn test_detect_memory_size_returns_reasonable_value() {
-        let size = detect_memory_size();
+    fn test_detect_memory_size_enforces_minimum() {
+        // detect_memory_size() has a built-in minimum of 32 MB regardless of hardware
+        let size = detect_memory_size(4);
         assert!(size >= 32, "Auto-detect should return at least 32MB");
     }
 
@@ -969,7 +994,7 @@ mod tests {
     #[test]
     fn test_ram_aware_memory_size() {
         // Auto-detect should always return a reasonable value
-        let size = detect_memory_size();
+        let size = detect_memory_size(4);
         assert!(size >= 32, "Should be at least 32 MB");
         
         // Even on high-core systems, shouldn't be absurdly large
@@ -985,5 +1010,18 @@ mod tests {
                 total, ram_mb
             );
         }
+    }
+
+    #[test]
+    fn test_memory_multiplier_scaling() {
+        // Test different multipliers
+        let size_2x = detect_memory_size(2);
+        let size_4x = detect_memory_size(4);
+        let size_8x = detect_memory_size(8);
+        
+        // Should scale (unless capped by RAM)
+        assert!(size_2x >= 32);
+        assert!(size_4x >= size_2x);
+        assert!(size_8x >= size_4x);
     }
 }

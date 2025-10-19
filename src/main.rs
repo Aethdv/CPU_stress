@@ -32,6 +32,17 @@ struct Args {
     /// Disable progress reporting
     #[arg(short, long)]
     quiet: bool,
+
+    /// Run all workloads sequentially and display comparison table
+    #[arg(short = 'B', long)]
+    benchmark: bool,
+}
+
+/// Result from a single workload run
+#[derive(Debug, Clone)]
+struct WorkloadResult {
+    name: String,
+    ops_per_sec: u64,
 }
 
 /// Auto-detect L3 cache size and return recommended memory buffer size
@@ -359,6 +370,177 @@ fn format_number(n: u64) -> String {
     }
 }
 
+/// Run a single workload and return results
+fn run_single_workload(
+    workload: &str,
+    num_threads: usize,
+    memory_mb: usize,
+    batch_size: u64,
+    duration_secs: u64,
+    quiet: bool,
+) -> WorkloadResult {
+    if !quiet {
+        println!("\n[→] Running {} workload...", workload);
+    }
+
+    let stop_signal  = Arc::new(AtomicBool::new(false));
+    let work_counter = Arc::new(AtomicU64::new(0));
+
+    // Ctrl+C handler
+    let handler_stop = Arc::clone(&stop_signal);
+    let _ = ctrlc::set_handler(move || {
+        handler_stop.store(true, Ordering::Release);
+    });
+
+    let mut handles = Vec::with_capacity(num_threads);
+
+    for id in 0..num_threads {
+        let stop    = Arc::clone(&stop_signal);
+        let counter = Arc::clone(&work_counter);
+        let wl      = workload.to_string();
+        let batch   = batch_size;
+        let mem_mb  = memory_mb;
+
+        let handle  = thread::spawn(move || {
+            worker_thread(id, stop, counter, wl, batch, mem_mb);
+        });
+        handles.push(handle);
+    }
+
+    let start = Instant::now();
+    let duration_limit = Duration::from_secs(duration_secs);
+
+    // Progress reporter
+    if !quiet {
+        let report_stop    = Arc::clone(&stop_signal);
+        let report_counter = Arc::clone(&work_counter);
+        
+        thread::spawn(move || {
+            let mut last_ops = 0u64;
+
+            loop {
+                thread::sleep(Duration::from_secs(1));
+                if report_stop.load(Ordering::Relaxed) {
+                    break;
+                }
+
+                let current_ops = report_counter.load(Ordering::Relaxed);
+                let ops_per_sec = current_ops.saturating_sub(last_ops);
+                last_ops        = current_ops;
+
+                print!(
+                    "\r  [Running] Total ops: {} | Rate: {}/s    ",
+                    format_number(current_ops),
+                    format_number(ops_per_sec)
+                );
+                use std::io::Write;
+                std::io::stdout().flush().unwrap();
+            }
+        });
+    }
+
+    // Main wait loop
+    loop {
+        thread::sleep(Duration::from_millis(100));
+
+        if stop_signal.load(Ordering::Relaxed) {
+            break;
+        }
+
+        if start.elapsed() >= duration_limit {
+            stop_signal.store(true, Ordering::Release);
+            break;
+        }
+    }
+
+    // Join all workers
+    for handle in handles {
+        let _ = handle.join();
+    }
+
+    let elapsed     = start.elapsed();
+    let total_ops   = work_counter.load(Ordering::Relaxed);
+    let ops_per_sec = if elapsed.as_secs() > 0 {
+        total_ops / elapsed.as_secs()
+    } else {
+        total_ops
+    };
+
+    if !quiet {
+        println!("\r  [✓] Complete: {} ops in {:.2}s               ", 
+                 format_number(total_ops), elapsed.as_secs_f64());
+    }
+
+    WorkloadResult {
+        name: workload.to_string(),
+        ops_per_sec,
+    }
+}
+
+/// Display benchmark comparison table
+fn display_benchmark_table(results: &[WorkloadResult], num_threads: usize) {
+    // Find mixed workload as baseline
+    let mixed_rate = results.iter()
+        .find(|r| r.name == "mixed")
+        .map(|r| r.ops_per_sec)
+        .unwrap_or(1); // Avoid division by zero
+
+    println!("\n════════════════════════════════════════════════════════════");
+    println!("  BENCHMARK RESULTS");
+    println!("════════════════════════════════════════════════════════════");
+    
+    // Sort results: integer, float, mixed, memory
+    let order = ["integer", "float", "mixed", "memory"];
+    let mut sorted_results: Vec<_> = order.iter()
+        .filter_map(|&name| results.iter().find(|r| r.name == name))
+        .collect();
+    
+    // If any workload is missing, add remaining results
+    for result in results {
+        if !sorted_results.iter().any(|r| r.name == result.name) {
+            sorted_results.push(result);
+        }
+    }
+
+    // Table header
+    println!("┌──────────┬─────────────┬──────────┬─────────────────┐");
+    println!("│ Workload │    Rate     │ Relative │ Per-Thread Rate │");
+    println!("├──────────┼─────────────┼──────────┼─────────────────┤");
+
+    for result in sorted_results {
+        // Format rate with consistent spacing
+        let rate_formatted = format_number(result.ops_per_sec);
+        let rate_str = format!("{} /s", rate_formatted);
+        
+        // Calculate relative performance
+        let relative = if mixed_rate > 0 {
+            result.ops_per_sec as f64 / mixed_rate as f64
+        } else {
+            1.0
+        };
+        let relative_str = format!("{:5.1}x", relative);
+
+        // Per-thread rate
+        let per_thread = result.ops_per_sec / num_threads.max(1) as u64;
+        let per_thread_formatted = format_number(per_thread);
+        let per_thread_str = format!("{} /s", per_thread_formatted);
+
+        // Capitalize first letter of workload name
+        let workload_name = result.name.chars().next().unwrap().to_uppercase().to_string() + &result.name[1..];
+
+        println!(
+            "│ {:<8} │ {:>11} │ {:>8} │ {:>15} │",
+            workload_name,
+            rate_str,
+            relative_str,
+            per_thread_str
+        );
+    }
+
+    println!("└──────────┴─────────────┴──────────┴─────────────────┘");
+    println!("\nBaseline: Mixed = 1.0x | Threads: {}", num_threads);
+}
+
 fn main() {
     let args = Args::parse();
 
@@ -374,6 +556,43 @@ fn main() {
         args.memory_mb
     };
 
+    // Benchmark mode: run all workloads
+    if args.benchmark {
+        if args.duration == 0 {
+            eprintln!("Error: --benchmark requires --duration to be set (e.g., -d 60)");
+            std::process::exit(1);
+        }
+
+        println!("════════════════════════════════════════════════════════════");
+        println!("  CPU STRESS BENCHMARK v1.1.1");
+        println!("════════════════════════════════════════════════════════════");
+        println!("  Threads:    {}", num_threads);
+        println!("  Memory buf: {} MB per thread", memory_mb);
+        println!("  Batch size: {}", format_number(args.batch_size));
+        println!("  Duration:   {}s per workload", args.duration);
+        println!("  Total time: ~{}s (4 workloads)", args.duration * 4);
+        println!("════════════════════════════════════════════════════════════");
+
+        let workloads = ["integer", "float", "mixed", "memory"];
+        let mut results = Vec::new();
+
+        for workload in &workloads {
+            let result = run_single_workload(
+                workload,
+                num_threads,
+                memory_mb,
+                args.batch_size,
+                args.duration,
+                args.quiet,
+            );
+            results.push(result);
+        }
+
+        display_benchmark_table(&results, num_threads);
+        return;
+    }
+
+    // Single workload mode (original behavior)
     let workload = match args.workload.as_str() {
         "integer" | "float" | "memory" | "mixed" => args.workload.clone(),
         _ => {
@@ -383,7 +602,7 @@ fn main() {
     };
 
     println!("════════════════════════════════════════════════════════════");
-    println!("  CPU STRESS TEST v1.1.0");
+    println!("  CPU STRESS TEST v1.1.1);
     println!("════════════════════════════════════════════════════════════");
     println!("  Threads:    {}", num_threads);
     println!("  Workload:   {}", workload);
@@ -522,7 +741,6 @@ mod tests {
     fn test_stress_integer_prevents_optimization() {
         let mut acc = 0u64;
         stress_integer(1000, &mut acc);
-        // Verify work happened (result is deterministic)
         assert_ne!(acc, 0, "Accumulator should be non-zero after work");
     }
 
@@ -577,7 +795,6 @@ mod tests {
 
     #[test]
     fn test_workload_validation() {
-        // Valid workloads should be accepted
         for wl in &["integer", "float", "memory", "mixed"] {
             let w = wl.to_string();
             assert!(
@@ -614,21 +831,18 @@ mod tests {
 
     #[test]
     fn test_memory_buffer_allocation() {
-        let buffer = allocate_memory_buffer(1); // 1 MB
+        let buffer = allocate_memory_buffer(1);
         let expected_elements = (1 * 1024 * 1024) / 8;
         assert_eq!(buffer.len(), expected_elements);
         
-        // Verify non-zero initialization
         let all_zero = buffer.iter().all(|&x| x == 0);
         assert!(!all_zero, "Buffer should be initialized with non-zero pattern");
     }
 
     #[test]
     fn test_memory_workload_pointer_chasing() {
-        // Verify that memory accesses are actually pseudo-random
         let mut buffer = vec![0u64; 1024].into_boxed_slice();
         
-        // Track which indices are accessed
         let mut accessed = vec![false; buffer.len()];
         let mut index = 0usize;
         
@@ -649,7 +863,7 @@ mod tests {
         assert_eq!(parse_cache_size("16384K"), Some(16));
         assert_eq!(parse_cache_size("12M"), Some(12));
         assert_eq!(parse_cache_size("256M"), Some(256));
-        assert_eq!(parse_cache_size("8388608"), Some(8)); // 8MB in bytes
+        assert_eq!(parse_cache_size("8388608"), Some(8));
     }
 
     #[test]
@@ -661,7 +875,6 @@ mod tests {
 
     #[test]
     fn test_cross_platform_detection_doesnt_panic() {
-        // This should work on any platform without panicking
         let _ = detect_l3_cache();
     }
 }

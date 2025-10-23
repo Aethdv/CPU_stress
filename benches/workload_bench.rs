@@ -1,4 +1,4 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, criterion_group, criterion_main};
 use std::hint::black_box as std_black_box;
 
 #[inline(always)]
@@ -17,8 +17,8 @@ fn stress_float(iterations: u64, accumulator: &mut f64) {
     for i in 0..iterations {
         let x = std_black_box(i as f64 + 1.0);
         let y = x.sqrt() * 1.618033988749895;
-        let z = y.sin()  + y.cos();
-        let w = (z.abs() + 1.0).ln();
+        let z = y.sin() + y.cos();
+        let w = z.abs().ln_1p();
         *accumulator = std_black_box(*accumulator + w);
     }
 }
@@ -28,10 +28,10 @@ fn stress_memory(iterations: u64, buffer: &mut [u64]) {
     if buffer.is_empty() {
         return;
     }
-    
+
     let len = buffer.len();
     let mut index = 0usize;
-    
+
     for i in 0..iterations {
         let value = std_black_box(buffer[index]);
         let new_value = value.wrapping_mul(6364136223846793005_u64).wrapping_add(i);
@@ -44,7 +44,7 @@ fn bench_integer_workload(c: &mut Criterion) {
     c.bench_function("stress_integer_10k", |b| {
         b.iter(|| {
             let mut acc = 0u64;
-            stress_integer(black_box(10_000), &mut acc);
+            stress_integer(std_black_box(10_000), &mut acc);
             acc
         });
     });
@@ -54,7 +54,7 @@ fn bench_float_workload(c: &mut Criterion) {
     c.bench_function("stress_float_10k", |b| {
         b.iter(|| {
             let mut acc = 0.0f64;
-            stress_float(black_box(10_000), &mut acc);
+            stress_float(std_black_box(10_000), &mut acc);
             acc
         });
     });
@@ -62,24 +62,21 @@ fn bench_float_workload(c: &mut Criterion) {
 
 fn bench_memory_workload(c: &mut Criterion) {
     c.bench_function("stress_memory_10k", |b| {
-        // Use 1MB buffer for benchmark (small enough for fast bench, large enough to hit L2/L3)
         let mut buffer = vec![0u64; 128 * 1024].into_boxed_slice();
-        
+
         b.iter(|| {
-            stress_memory(black_box(10_000), &mut buffer);
+            stress_memory(std_black_box(10_000), &mut buffer);
         });
     });
-    
+
     c.bench_function("stress_memory_small_l1", |b| {
-        // 32KB - fits in L1
         let mut buffer = vec![0u64; 4096].into_boxed_slice();
-        b.iter(|| stress_memory(black_box(10_000), &mut buffer));
+        b.iter(|| stress_memory(std_black_box(10_000), &mut buffer));
     });
-    
+
     c.bench_function("stress_memory_large_l3", |b| {
-        // 8MB - exceeds typical L2, may exceed L3 on some CPUs
         let mut buffer = vec![0u64; 1024 * 1024].into_boxed_slice();
-        b.iter(|| stress_memory(black_box(10_000), &mut buffer));
+        b.iter(|| stress_memory(std_black_box(10_000), &mut buffer));
     });
 }
 

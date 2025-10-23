@@ -1,0 +1,168 @@
+use anstyle::{AnsiColor, Color, Style};
+use clap::Parser;
+
+#[derive(Parser, Debug)]
+#[command(name = "cpu_stress")]
+#[command(version, about = "CPU stress test with memory subsystem pressure", long_about = None)]
+pub struct Args {
+    #[arg(short, long, default_value_t = 0)]
+    pub duration: u64,
+
+    #[arg(short = 'j', long, default_value_t = 0)]
+    pub threads: usize,
+
+    #[arg(short, long, default_value = "mixed")]
+    #[arg(value_parser = ["integer", "float", "memory", "mixed"])]
+    pub workload: String,
+
+    #[arg(short = 'm', long, default_value_t = 0)]
+    pub memory_mb: usize,
+
+    /// (2=light, 4=balanced, 8=aggressive, 16=extreme)
+    #[arg(short = 'x', long, default_value_t = 4)]
+    pub memory_multiplier: usize,
+
+    /// Iterations between stop checks
+    #[arg(short, long, default_value_t = 100_000)]
+    pub batch_size: u64,
+
+    /// Disable progress reporting
+    #[arg(short, long)]
+    pub quiet: bool,
+
+    /// Run all workloads sequentially
+    #[arg(short = 'B', long)]
+    pub benchmark: bool,
+}
+
+pub fn print_help() {
+    let header = Style::new()
+        .bold()
+        .fg_color(Some(Color::Ansi(AnsiColor::Cyan)));
+    let cmd = Style::new()
+        .bold()
+        .fg_color(Some(Color::Ansi(AnsiColor::Green)));
+    let opt = Style::new().fg_color(Some(Color::Ansi(AnsiColor::Green)));
+    let value = Style::new().fg_color(Some(Color::Ansi(AnsiColor::Yellow)));
+    let desc = Style::new();
+    let example = Style::new().fg_color(Some(Color::Ansi(AnsiColor::BrightBlack)));
+    let reset = Style::new();
+
+    println!("{}cpu_stress{} {}", cmd, reset, env!("CARGO_PKG_VERSION"));
+    println!("CPU stress testing tool with computational multi-workload types\n");
+
+    println!("{}USAGE:{}", header, reset);
+    println!("    {}cpu_stress{} [OPTIONS]\n", cmd, reset);
+
+    println!("{}OPTIONS:{}", header, reset);
+
+    println!(
+        "  {}-d{}, {}--duration{} {}SECS{}",
+        opt, reset, opt, reset, value, reset
+    );
+    println!(
+        "      {}Duration in seconds (0 = run until Ctrl+C) [default: 0]{}",
+        desc, reset
+    );
+
+    println!(
+        "\n  {}-j{}, {}--threads{} {}NUM{}",
+        opt, reset, opt, reset, value, reset
+    );
+    println!(
+        "      {}Number of worker threads (0 = auto-detect all cores) [default: 0]{}",
+        desc, reset
+    );
+
+    println!(
+        "\n  {}-w{}, {}--workload{} {}TYPE{}",
+        opt, reset, opt, reset, value, reset
+    );
+    println!(
+        "      {}Workload type: integer, float, memory, mixed [default: mixed]{}",
+        desc, reset
+    );
+
+    println!(
+        "\n  {}-m{}, {}--memory-mb{} {}MB{}",
+        opt, reset, opt, reset, value, reset
+    );
+    println!(
+        "      {}Memory buffer size in MB (0 = auto-detect, overrides -x) [default: 0]{}",
+        desc, reset
+    );
+
+    println!(
+        "\n  {}-x{}, {}--memory-multiplier{} {}NUM{}",
+        opt, reset, opt, reset, value, reset
+    );
+    println!(
+        "      {}Memory multiplier for auto-detection{}",
+        desc, reset
+    );
+    println!(
+        "      {}2=light, 4=balanced, 8=aggressive, 16=extreme [default: 4]{}",
+        desc, reset
+    );
+
+    println!(
+        "\n  {}-b{}, {}--batch-size{} {}NUM{}",
+        opt, reset, opt, reset, value, reset
+    );
+    println!(
+        "      {}Work batch size (iterations between stop checks) [default: 100000]{}",
+        desc, reset
+    );
+
+    println!("\n  {}-q{}, {}--quiet{}", opt, reset, opt, reset);
+    println!("      {}Disable progress reporting{}", desc, reset);
+
+    println!("\n  {}-B{}, {}--benchmark{}", opt, reset, opt, reset);
+    println!(
+        "      {}Run all workloads sequentially and display comparison table{}",
+        desc, reset
+    );
+
+    println!("\n  {}-h{}, {}--help{}", opt, reset, opt, reset);
+    println!("      {}Print this help message{}", desc, reset);
+
+    println!("\n  {}-V{}, {}--version{}", opt, reset, opt, reset);
+    println!("      {}Print version information{}", desc, reset);
+
+    println!("\n{}EXAMPLES:{}", header, reset);
+    println!(
+        "  {}# Default balanced stress test for 60 seconds{}",
+        example, reset
+    );
+    println!("  {}cpu_stress{} -d 60\n", cmd, reset);
+
+    println!(
+        "  {}# Aggressive memory stress (8x multiplier){}",
+        example, reset
+    );
+    println!("  {}cpu_stress{} -w memory -d 120 -x 8\n", cmd, reset);
+
+    println!("  {}# Run full benchmark suite{}", example, reset);
+    println!("  {}cpu_stress{} --benchmark -d 30\n", cmd, reset);
+
+    println!(
+        "  {}# Extreme stress: 16 threads, 16x memory, 5 minutes{}",
+        example, reset
+    );
+    println!("  {}cpu_stress{} -j 16 -x 16 -d 300\n", cmd, reset);
+
+    println!(
+        "  {}# Manual memory size override (512 MB per thread){}",
+        example, reset
+    );
+    println!("  {}cpu_stress{} -w memory -m 512 -d 60", cmd, reset);
+}
+
+pub fn print_version() {
+    let cmd = Style::new()
+        .bold()
+        .fg_color(Some(Color::Ansi(AnsiColor::Green)));
+    let reset = Style::new();
+
+    println!("{}cpu_stress{} {}", cmd, reset, env!("CARGO_PKG_VERSION"));
+}

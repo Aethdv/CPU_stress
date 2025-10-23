@@ -1,4 +1,4 @@
-# CPU Stress Test v1.2.0
+# CPU Stress Test v1.3.0
 
 CPU stress testing tool with computational multi-workload types.<br>
 (Targeting ***~99-100%*** load, I recommend using btop or equivalent for monitoring your temperatures).
@@ -56,30 +56,29 @@ cargo build --release
 
 ### Example output of `--benchmark`:
 ```bash
-
 ════════════════════════════════════════════════════════════
   BENCHMARK RESULTS
 ════════════════════════════════════════════════════════════
 ┌──────────┬─────────────┬──────────┬─────────────────┐
 │ Workload │    Rate     │ Relative │ Per-Thread Rate │
 ├──────────┼─────────────┼──────────┼─────────────────┤
-│ Integer  │   13.30B /s │    47.9x │      831.07M /s │
-│ Float    │  428.95M /s │     1.5x │       26.81M /s │
-│ Mixed    │  277.46M /s │     1.0x │       17.34M /s │
-│ Memory   │  106.49M /s │     0.4x │        6.66M /s │
+│ Integer  │   12.13B /s │    48.5x │      758.04M /s │
+│ Float    │  371.70M /s │     1.5x │       23.23M /s │
+│ Mixed    │  250.30M /s │     1.0x │       15.64M /s │
+│ Memory   │  100.08M /s │     0.4x │        6.25M /s │
 └──────────┴─────────────┴──────────┴─────────────────┘
 ```
 
 ### Test & Development
 ```bash
 # Run tests
-cargo test --release
+cargo test --all
 
 # Run benchmarks (measures µs per 10K iterations)
 cargo bench
 
 # Lint checks
-cargo clippy -- -D warnings
+cargo clippy --all-targets -- -D warnings -D clippy::nursery
 
 # Format check
 cargo fmt --all -- --check

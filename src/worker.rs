@@ -1,4 +1,7 @@
-use crate::workload::{allocate_memory_buffer, stress_float, stress_integer, stress_memory};
+use crate::workload::{
+    allocate_memory_buffer, stress_float, stress_integer, stress_memory_bandwidth,
+    stress_memory_latency,
+};
 use std::hint::black_box;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -23,11 +26,12 @@ pub fn worker_thread(
         match workload {
             "integer" => stress_integer(batch_size, &mut int_acc),
             "float" => stress_float(batch_size, &mut float_acc),
-            "memory" => stress_memory(batch_size, &mut mem_buffer),
+            "memory" | "memory-latency" => stress_memory_latency(batch_size, &mut mem_buffer),
+            "memory-bandwidth" => stress_memory_bandwidth(batch_size, &mut mem_buffer),
             _ => {
                 stress_integer(batch_size / 3, &mut int_acc);
                 stress_float(batch_size / 3, &mut float_acc);
-                stress_memory(batch_size / 3, &mut mem_buffer);
+                stress_memory_latency(batch_size / 3, &mut mem_buffer);
             }
         }
 
@@ -87,5 +91,24 @@ mod tests {
 
         let ops = counter.load(Ordering::Relaxed);
         assert!(ops > 10000);
+    }
+
+    #[test]
+    fn test_memory_bandwidth_workload() {
+        let stop = Arc::new(AtomicBool::new(false));
+        let counter = Arc::new(AtomicU64::new(0));
+
+        let stop_clone = Arc::clone(&stop);
+        let counter_clone = Arc::clone(&counter);
+
+        let handle = thread::spawn(move || {
+            worker_thread(0, stop_clone, counter_clone, "memory-bandwidth", 10000, 2);
+        });
+
+        thread::sleep(Duration::from_millis(50));
+        stop.store(true, Ordering::Release);
+
+        handle.join().expect("Worker should terminate cleanly");
+        assert!(counter.load(Ordering::Relaxed) > 0);
     }
 }

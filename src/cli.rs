@@ -12,13 +12,14 @@ pub struct Args {
     pub threads: usize,
 
     #[arg(short, long, default_value = "mixed")]
-    #[arg(value_parser = ["integer", "float", "memory", "mixed"])]
+    #[arg(value_parser = ["integer", "float", "memory", "memory-latency", "memory-bandwidth", "mixed"])]
     pub workload: String,
 
+    /// 0 = auto-detect, overrides -x
     #[arg(short = 'm', long, default_value_t = 0)]
     pub memory_mb: usize,
 
-    /// (2=light, 4=balanced, 8=aggressive, 16=extreme)
+    /// 2=light, 4=balanced, 8=aggressive, 16=extreme
     #[arg(short = 'x', long, default_value_t = 4)]
     pub memory_multiplier: usize,
 
@@ -78,9 +79,30 @@ pub fn print_help() {
         "\n  {}-w{}, {}--workload{} {}TYPE{}",
         opt, reset, opt, reset, value, reset
     );
+    println!("      {}Workload type: [default: mixed]{}", desc, reset);
     println!(
-        "      {}Workload type: integer, float, memory, mixed [default: mixed]{}",
-        desc, reset
+        "        {}integer         {}{}- Pure CPU integer arithmetic{}",
+        value, reset, desc, reset
+    );
+    println!(
+        "        {}float           {}{}- Pure CPU floating-point math{}",
+        value, reset, desc, reset
+    );
+    println!(
+        "        {}memory          {}{}- Memory latency test (fallback){}",
+        value, reset, desc, reset
+    );
+    println!(
+        "        {}memory-latency  {}{}- Explicit RAM latency test{}",
+        value, reset, desc, reset
+    );
+    println!(
+        "        {}memory-bandwidth{}{}- RAM bandwidth saturation{}",
+        value, reset, desc, reset
+    );
+    println!(
+        "        {}mixed           {}{}- Integer + float + memory-latency{}",
+        value, reset, desc, reset
     );
 
     println!(
@@ -137,10 +159,22 @@ pub fn print_help() {
     println!("  {}cpu_stress{} -d 60\n", cmd, reset);
 
     println!(
-        "  {}# Aggressive memory stress (8x multiplier){}",
+        "  {}# Test RAM latency (pointer-chasing pattern){}",
         example, reset
     );
-    println!("  {}cpu_stress{} -w memory -d 120 -x 8\n", cmd, reset);
+    println!(
+        "  {}cpu_stress{} -w memory-latency -d 120 -x 8\n",
+        cmd, reset
+    );
+
+    println!(
+        "  {}# Saturate memory bandwidth (parallel streams){}",
+        example, reset
+    );
+    println!(
+        "  {}cpu_stress{} -w memory-bandwidth -d 120 -x 8\n",
+        cmd, reset
+    );
 
     println!("  {}# Run full benchmark suite{}", example, reset);
     println!("  {}cpu_stress{} --benchmark -d 30\n", cmd, reset);
@@ -155,7 +189,10 @@ pub fn print_help() {
         "  {}# Manual memory size override (512 MB per thread){}",
         example, reset
     );
-    println!("  {}cpu_stress{} -w memory -m 512 -d 60", cmd, reset);
+    println!(
+        "  {}cpu_stress{} -w memory-bandwidth -m 512 -d 60",
+        cmd, reset
+    );
 }
 
 pub fn print_version() {

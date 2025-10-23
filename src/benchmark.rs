@@ -123,11 +123,17 @@ pub fn display_benchmark_table(results: &[WorkloadResult], num_threads: usize) {
         .map(|r| r.ops_per_sec)
         .unwrap_or(1);
 
-    println!("\n════════════════════════════════════════════════════════════");
+    println!("\n════════════════════════════════════════════════════════════════════");
     println!("  BENCHMARK RESULTS");
-    println!("════════════════════════════════════════════════════════════");
+    println!("════════════════════════════════════════════════════════════════════");
 
-    let order = ["integer", "float", "mixed", "memory"];
+    let order = [
+        "integer",
+        "float",
+        "mixed",
+        "memory-latency",
+        "memory-bandwidth",
+    ];
     let mut sorted_results: Vec<_> = order
         .iter()
         .filter_map(|&name| results.iter().find(|r| r.name == name))
@@ -139,9 +145,9 @@ pub fn display_benchmark_table(results: &[WorkloadResult], num_threads: usize) {
         }
     }
 
-    println!("┌──────────┬─────────────┬──────────┬─────────────────┐");
-    println!("│ Workload │    Rate     │ Relative │ Per-Thread Rate │");
-    println!("├──────────┼─────────────┼──────────┼─────────────────┤");
+    println!("┌──────────────────┬─────────────┬──────────┬─────────────────┐");
+    println!("│ Workload         │    Rate     │ Relative │ Per-Thread Rate │");
+    println!("├──────────────────┼─────────────┼──────────┼─────────────────┤");
 
     for result in sorted_results {
         let rate_formatted = format_number(result.ops_per_sec);
@@ -158,21 +164,27 @@ pub fn display_benchmark_table(results: &[WorkloadResult], num_threads: usize) {
         let per_thread_formatted = format_number(per_thread);
         let per_thread_str = format!("{} /s", per_thread_formatted);
 
-        let workload_name = result
-            .name
-            .chars()
-            .next()
-            .unwrap()
-            .to_uppercase()
-            .to_string()
-            + &result.name[1..];
+        let workload_name = if result.name == "memory-latency" {
+            "Memory-Latency".to_string()
+        } else if result.name == "memory-bandwidth" {
+            "Memory-Bandwidth".to_string()
+        } else {
+            result
+                .name
+                .chars()
+                .next()
+                .unwrap()
+                .to_uppercase()
+                .to_string()
+                + &result.name[1..]
+        };
 
         println!(
-            "│ {:<8} │ {:>11} │ {:>8} │ {:>15} │",
+            "│ {:<16} │ {:>11} │ {:>8} │ {:>15} │",
             workload_name, rate_str, relative_str, per_thread_str
         );
     }
 
-    println!("└──────────┴─────────────┴──────────┴─────────────────┘");
+    println!("└──────────────────┴─────────────┴──────────┴─────────────────┘");
     println!("\nBaseline: Mixed = 1.0x | Threads: {}", num_threads);
 }

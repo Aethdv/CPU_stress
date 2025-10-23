@@ -74,10 +74,16 @@ fn run_benchmark_mode(args: &Args, num_threads: usize, memory_mb: usize) {
 
     println!("  Batch size: {}", format_number(args.batch_size));
     println!("  Duration:   {}s per workload", args.duration);
-    println!("  Total time: ~{}s (4 workloads)", args.duration * 4);
+    println!("  Total time: ~{}s (5 workloads)", args.duration * 5);
     println!("════════════════════════════════════════════════════════════");
 
-    let workloads = ["integer", "float", "mixed", "memory"];
+    let workloads = [
+        "integer",
+        "float",
+        "mixed",
+        "memory-latency",
+        "memory-bandwidth",
+    ];
     let mut results = Vec::new();
 
     for workload in &workloads {
@@ -97,7 +103,9 @@ fn run_benchmark_mode(args: &Args, num_threads: usize, memory_mb: usize) {
 
 fn run_single_mode(args: &Args, num_threads: usize, memory_mb: usize) {
     let workload = match args.workload.as_str() {
-        "integer" | "float" | "memory" | "mixed" => &args.workload,
+        "integer" | "float" | "memory" | "memory-latency" | "memory-bandwidth" | "mixed" => {
+            &args.workload
+        }
         _ => {
             eprintln!("Invalid workload '{}'. Using 'mixed'.", args.workload);
             "mixed"
@@ -214,11 +222,19 @@ fn print_final_stats(elapsed: Duration, total_ops: u64, workload: &str) {
     println!("  Total ops:     {}", format_number(total_ops));
     println!("  Avg rate:      {}/s", format_number(ops_per_sec));
 
-    if workload == "memory" {
-        let bytes_transferred = total_ops * 16;
+    if workload.starts_with("memory") {
+        let bytes_per_op = if workload == "memory-bandwidth" {
+            // Bandwidth: 8 streams × (1 read + 1 write) × 8 bytes
+            128
+        } else {
+            // Latency: 1 read + 1 write × 8 bytes
+            16
+        };
+
+        let bytes_transferred = total_ops * bytes_per_op;
         let gb_per_sec = (bytes_transferred as f64) / elapsed.as_secs_f64() / 1_000_000_000.0;
         println!("  Memory BW:     {:.2} GB/s", gb_per_sec);
-        println!("               (estimated, 16B per op: 8B read + 8B write)");
+        println!("               (estimated, {}B per op)", bytes_per_op);
     }
 
     println!("════════════════════════════════════════════════════════════");

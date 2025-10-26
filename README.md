@@ -1,4 +1,4 @@
-# Locus v1.4.1
+# Locus v1.4.2
 CPU benchmarking tool with computational multi-workload types.<br>
 (Targeting ~99–100% load. Use `btop` or equivalent to monitor temperatures.)<br>
 [![Crates.io](https://img.shields.io/crates/v/locus-cli.svg)](https://crates.io/crates/locus-cli)
@@ -54,11 +54,11 @@ cargo build --release
 # Aggressive memory bandwidth bench (parallel streams)
 ./target/release/locus -w memory-bandwidth -d 10 -x 8
 
-# Run a benchmark across all workload types
-./target/release/locus --benchmark -d 10
-
 # Force specific buffer size (overrides auto-detect and -x)
 ./target/release/locus -w memory-bandwidth -d 10 -m 512
+
+# Run a benchmark across all workload types
+./target/release/locus --benchmark -d 10
 
 # Quiet mode (no progress output)
 ./target/release/locus -d 10 --quiet

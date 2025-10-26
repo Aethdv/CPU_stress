@@ -67,26 +67,24 @@ pub fn detect_memory_size(multiplier: usize) -> usize {
     heuristic_mb
 }
 
+#[cfg(target_os = "linux")]
 fn detect_l3_cache() -> Option<usize> {
-    #[cfg(target_os = "linux")]
-    {
-        return detect_l3_cache_linux();
-    }
+    detect_l3_cache_linux()
+}
 
-    #[cfg(target_os = "windows")]
-    {
-        return detect_l3_cache_windows();
-    }
+#[cfg(target_os = "windows")]
+fn detect_l3_cache() -> Option<usize> {
+    detect_l3_cache_windows()
+}
 
-    #[cfg(target_os = "macos")]
-    {
-        return detect_l3_cache_macos();
-    }
+#[cfg(target_os = "macos")]
+fn detect_l3_cache() -> Option<usize> {
+    detect_l3_cache_macos()
+}
 
-    #[cfg(not(any(target_os = "linux", target_os = "windows", target_os = "macos")))]
-    {
-        None
-    }
+#[cfg(not(any(target_os = "linux", target_os = "windows", target_os = "macos")))]
+fn detect_l3_cache() -> Option<usize> {
+    None
 }
 
 #[cfg(target_os = "linux")]

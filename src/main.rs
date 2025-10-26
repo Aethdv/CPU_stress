@@ -1,8 +1,3 @@
-#![cfg_attr(target_os = "macos", allow(unused))]
-
-#[cfg(target_os = "macos")]
-compile_error!("macOS is not supported. Please build on Linux or Windows.");
-
 mod benchmark;
 mod cli;
 mod reporting;

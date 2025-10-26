@@ -70,15 +70,20 @@ pub fn detect_memory_size(multiplier: usize) -> usize {
 fn detect_l3_cache() -> Option<usize> {
     #[cfg(target_os = "linux")]
     {
-        detect_l3_cache_linux()
+        return detect_l3_cache_linux();
     }
 
     #[cfg(target_os = "windows")]
     {
-        detect_l3_cache_windows()
+        return detect_l3_cache_windows();
     }
 
-    #[cfg(not(any(target_os = "linux", target_os = "windows")))]
+    #[cfg(target_os = "macos")]
+    {
+        return detect_l3_cache_macos();
+    }
+
+    #[cfg(not(any(target_os = "linux", target_os = "windows", target_os = "macos")))]
     {
         None
     }
@@ -169,6 +174,43 @@ struct CacheDescriptor {
     Type:          u32,
 }
 
+#[cfg(target_os = "macos")]
+fn detect_l3_cache_macos() -> Option<usize> {
+    // Prefer direct L3 keys if available (Intel Macs)
+    if let Some(bytes) = sysctl_u64("hw.l3cachesize") {
+        let mb = (bytes / (1024 * 1024)) as usize;
+        if mb > 0 {
+            return Some(mb);
+        }
+    }
+
+    // Apple Silicon may provide per-perflevel L3 sizes
+    for key in [
+        "hw.perflevel0.l3cachesize",
+        "hw.perflevel1.l3cachesize",
+        "hw.perflevel2.l3cachesize",
+    ] {
+        if let Some(bytes) = sysctl_u64(key) {
+            let mb = (bytes / (1024 * 1024)) as usize;
+            if mb > 0 {
+                return Some(mb);
+            }
+        }
+    }
+
+    // Fallback: take the largest non-zero cache entry from hw.cachesize (array)
+    if let Some(vals) = sysctl_u64_vec("hw.cachesize") {
+        if let Some(max_bytes) = vals.into_iter().max() {
+            let mb = (max_bytes / (1024 * 1024)) as usize;
+            if mb > 0 {
+                return Some(mb);
+            }
+        }
+    }
+
+    None
+}
+
 fn parse_cache_size(s: &str) -> Option<usize> {
     let s = s.trim();
 
@@ -223,9 +265,104 @@ fn get_total_system_ram_mb() -> Option<usize> {
         None
     }
 
-    #[cfg(not(any(target_os = "linux", target_os = "windows")))]
+    #[cfg(target_os = "macos")]
+    {
+        if let Some(bytes) = sysctl_u64("hw.memsize") {
+            return Some((bytes / (1024 * 1024)) as usize);
+        }
+        None
+    }
+
+    #[cfg(not(any(target_os = "linux", target_os = "windows", target_os = "macos")))]
     {
         None
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn sysctl_u64(name: &str) -> Option<u64> {
+    use std::ffi::{CString, c_void};
+
+    extern "C" {
+        fn sysctlbyname(
+            name: *const std::os::raw::c_char,
+            oldp: *mut c_void,
+            oldlenp: *mut usize,
+            newp: *mut c_void,
+            newlen: usize,
+        ) -> std::os::raw::c_int;
+    }
+
+    unsafe {
+        let c_name = CString::new(name).ok()?;
+        let mut value: u64 = 0;
+        let mut size = std::mem::size_of::<u64>();
+        let ret = sysctlbyname(
+            c_name.as_ptr(),
+            &mut value as *mut _ as *mut c_void,
+            &mut size,
+            std::ptr::null_mut(),
+            0,
+        );
+        if ret == 0 && size == std::mem::size_of::<u64>() {
+            Some(value)
+        } else {
+            None
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn sysctl_u64_vec(name: &str) -> Option<Vec<u64>> {
+    use std::ffi::{CString, c_void};
+
+    extern "C" {
+        fn sysctlbyname(
+            name: *const std::os::raw::c_char,
+            oldp: *mut c_void,
+            oldlenp: *mut usize,
+            newp: *mut c_void,
+            newlen: usize,
+        ) -> std::os::raw::c_int;
+    }
+
+    unsafe {
+        let c_name = CString::new(name).ok()?;
+        let mut size: usize = 0;
+
+        // First call to get size
+        if sysctlbyname(
+            c_name.as_ptr(),
+            std::ptr::null_mut(),
+            &mut size,
+            std::ptr::null_mut(),
+            0,
+        ) != 0
+            || size == 0
+        {
+            return None;
+        }
+
+        // Second call to fill buffer
+        let mut buf = vec![0u8; size];
+        if sysctlbyname(
+            c_name.as_ptr(),
+            buf.as_mut_ptr() as *mut c_void,
+            &mut size,
+            std::ptr::null_mut(),
+            0,
+        ) != 0
+        {
+            return None;
+        }
+
+        let count = size / std::mem::size_of::<u64>();
+        let mut out = Vec::with_capacity(count);
+        let ptr = buf.as_ptr() as *const u64;
+        for i in 0..count {
+            out.push(*ptr.add(i));
+        }
+        Some(out)
     }
 }
 
@@ -250,12 +387,12 @@ mod tests {
 
     #[test]
     fn test_cross_platform_detection_doesnt_panic() {
-        let _ = detect_l3_cache();
+        let _ = super::detect_l3_cache();
     }
 
     #[test]
     fn test_get_total_system_ram() {
-        if let Some(ram_mb) = get_total_system_ram_mb() {
+        if let Some(ram_mb) = super::get_total_system_ram_mb() {
             assert!(ram_mb >= 512);
             assert!(ram_mb <= 67_108_864);
         }
@@ -269,7 +406,7 @@ mod tests {
         let num_cpus = num_cpus::get();
         let total = size * num_cpus;
 
-        if let Some(ram_mb) = get_total_system_ram_mb() {
+        if let Some(ram_mb) = super::get_total_system_ram_mb() {
             let max_reasonable = ((ram_mb as f64) * RAM_SAFETY_FACTOR) as usize;
             assert!(
                 total <= max_reasonable,

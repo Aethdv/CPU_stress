@@ -8,14 +8,10 @@ CPU benchmarking tool with computational multi-workload types.<br>
 
 - Rust 1.88.0+ (edition 2024)
 
-## Unsupported platforms :)
-
-- MacOS
-
 ## Features
 
 - Auto-detection
-  - Detects L3 cache size (Linux/Windows)
+  - Detects L3 cache size (Linux/Windows/MacOS)
   - Scales memory buffers based on cache and multiplier
   - RAM-aware allocation (90% safety cap to avoid OOM)
 

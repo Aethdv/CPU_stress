@@ -1,7 +1,7 @@
 # Locus v1.4.1
 CPU benchmarking tool with computational multi-workload types.<br>
 (Targeting ~99–100% load. Use `btop` or equivalent to monitor temperatures.)<br>
-[![Crates.io](https://img.shields.io/crates/v/locus.svg)](https://crates.io/crates/locus)
+[![Crates.io](https://img.shields.io/crates/v/locus.svg)](https://crates.io/crates/locus-cli)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ## Requirements

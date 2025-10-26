@@ -1,33 +1,44 @@
-# CPU Stress Test v1.3.0
-
-CPU stress testing tool with computational multi-workload types.<br>
-(Targeting ***~99-100%*** load, I recommend using btop or equivalent for monitoring your temperatures).
+# Locus v1.4.1
+CPU benchmarking tool with computational multi-workload types.<br>
+(Targeting ~99–100% load. Use `btop` or equivalent to monitor temperatures.)
+[![Crates.io](https://img.shields.io/crates/v/locus.svg)](https://crates.io/crates/locus)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ## Requirements
 
-- **Rust 1.88.0+** (edition 2024)
+- Rust 1.88.0+ (edition 2024)
+
+## Unsupported platforms :)
+
+- MacOS
 
 ## Features
 
-✨ **Smart Auto-Detection**
-- Automatically detects L3 cache size (Linux/Windows/macOS)
-- Scales memory buffers based on detected hardware
-- RAM-aware allocation (80% safety cap prevents OOM)
+- Auto-detection
+  - Detects L3 cache size (Linux/Windows)
+  - Scales memory buffers based on cache and multiplier
+  - RAM-aware allocation (90% safety cap to avoid OOM)
 
-🔥 **Flexible Stress Levels**
-- Memory multiplier control (2x light → 16x extreme)
-- Integer, float, memory, and mixed workloads
-- Configurable threads, duration, and batch sizes
+- Workloads
+  - `integer`
+  - `float`
+  - `memory-latency`
+  - `memory-bandwidth`
+  - `mixed` (integer + float + memory-latency)
 
-📊 **Benchmark Mode**
-- Run all workloads sequentially
-- Compare performance with automatic table output
-- Perfect for before/after comparisons
+- Controls
+  - Threads, duration, batch size
+  - Memory multiplier: 2 (light), 4 (balanced), 8 (aggressive), 16 (extreme)
+  - Manual memory override (per-thread MB)
 
-🎯 **Correctness Guarantees**
-- Uses `black_box` to prevent compiler dead-code elimination
-- Pointer-chasing memory access defeats prefetchers
-- Comprehensive test coverage + benchmarks
+- Benchmark mode
+  - Runs all workloads sequentially
+  - Prints a comparison table
+
+- Correctness
+  - Uses `black_box` to avoid dead-code elimination
+  - Pointer-chasing defeats prefetchers
+  - Tests and Criterion benchmarks included
 
 ## Quick Start
 
@@ -36,22 +47,25 @@ CPU stress testing tool with computational multi-workload types.<br>
 cargo build --release
 
 # Run with auto-detected cores until Ctrl+C
-./target/release/cpu_stress
+./target/release/locus
 
-# Run for 60 seconds with 8 threads, float workload
-./target/release/cpu_stress --duration 60 --threads 8 --workload float
+# Run for 10 seconds with 8 threads, float workload
+./target/release/locus -w float -d 10 -j 8
 
-# Aggressive memory stress (8x multiplier)
-./target/release/cpu_stress -w memory -d 120 -x 8
+# Aggressive memory latency bench (pointer chasing)
+./target/release/locus -w memory-latency -d 10 -x 8
 
-# Run a benchmark running all workload types sequentially
-./target/release/cpu_stress --benchmark -d 30
+# Aggressive memory bandwidth bench (parallel streams)
+./target/release/locus -w memory-bandwidth -d 10 -x 8
 
-# Force specific buffer size (ignores auto-detection and -x)
-./target/release/cpu_stress -w memory -m 512 -d 60
+# Run a benchmark across all workload types
+./target/release/locus --benchmark -d 10
+
+# Force specific buffer size (overrides auto-detect and -x)
+./target/release/locus -w memory-bandwidth -d 10 -m 512
 
 # Quiet mode (no progress output)
-./target/release/cpu_stress --duration 30 --quiet
+./target/release/locus -d 10 --quiet
 ```
 
 ### Example output of `--benchmark`:
@@ -59,47 +73,49 @@ cargo build --release
 ════════════════════════════════════════════════════════════
   BENCHMARK RESULTS
 ════════════════════════════════════════════════════════════
-┌──────────┬─────────────┬──────────┬─────────────────┐
-│ Workload │    Rate     │ Relative │ Per-Thread Rate │
-├──────────┼─────────────┼──────────┼─────────────────┤
-│ Integer  │   12.13B /s │    48.5x │      758.04M /s │
-│ Float    │  371.70M /s │     1.5x │       23.23M /s │
-│ Mixed    │  250.30M /s │     1.0x │       15.64M /s │
-│ Memory   │  100.08M /s │     0.4x │        6.25M /s │
-└──────────┴─────────────┴──────────┴─────────────────┘
+┌──────────────────┬─────────────┬──────────┬─────────────────┐
+│ Workload         │    Rate     │ Relative │ Per-Thread Rate │
+├──────────────────┼─────────────┼──────────┼─────────────────┤
+│ Integer          │   12.70B /s │    48.0x │      793.45M /s │
+│ Float            │  349.29M /s │     1.3x │       21.83M /s │
+│ Mixed            │  264.62M /s │     1.0x │       16.54M /s │
+│ Memory-Latency   │  105.94M /s │     0.4x │        6.62M /s │
+│ Memory-Bandwidth │   32.99M /s │     0.1x │        2.06M /s │
+└──────────────────┴─────────────┴──────────┴─────────────────┘
 ```
 
-### Test & Development
+## Test & Development
 ```bash
 # Run tests
-cargo test --all
+cargo test --all --release
 
-# Run benchmarks (measures µs per 10K iterations)
+# Run micro-benchmarks (measures µs per 10K iterations)
 cargo bench
 
 # Lint checks
 cargo clippy --all-targets -- -D warnings -D clippy::nursery
 
 # Format check
-cargo fmt --all -- --check
+cargo fmt --all
 ```
 
 ## CLI options
 ```bash
 BASIC OPTIONS:
-  -d, --duration <SECS>        Duration in seconds (0 = unlimited)     [default: 0]
-  -j, --threads <NUM>          Worker threads (0 = auto-detect)        [default: 0]
-  -w, --workload <TYPE>        Workload: integer|float|memory|mixed    [default: mixed]
+  -d, --duration <SECS>        Duration in seconds (0 = unlimited)        [default: 0]
+  -j, --threads <NUM>          Worker threads (0 = auto-detect)           [default: 0]
+  -w, --workload <TYPE>        Workload: integer|float|memory-latency|
+                               memory-bandwidth|mixed                     [default: mixed]
 
 MEMORY OPTIONS:
-  -m, --memory-mb <MB>          Buffer size in MB (0 = auto-detect)    [default: 0]
-  -x, --memory-multiplier <NUM> Multiplier: 2=light, 4=balanced,
-                                            8=aggressive, 16=extreme   [default: 4]
+  -m, --memory-mb <MB>         Buffer size in MB (0 = auto-detect)        [default: 0]
+  -x, --memory-multiplier <N>  Multiplier: 2=light, 4=balanced,
+                               8=aggressive, 16=extreme                   [default: 4]
 
 ADVANCED OPTIONS:
-  -b, --batch-size <NUM>       Iterations between stop checks          [default: 100000]
+  -b, --batch-size <NUM>       Iterations between stop checks             [default: 100000]
   -q, --quiet                  Disable progress reporting
-  -B, --benchmark              Run all workloads and compare results
+  -B, --benchmark              Run all workloads
 
   -h, --help                   Print help
   -V, --version                Print version

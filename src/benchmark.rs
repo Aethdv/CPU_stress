@@ -28,11 +28,6 @@ pub fn run_single_workload(
     let stop_signal = Arc::new(AtomicBool::new(false));
     let work_counter = Arc::new(AtomicU64::new(0));
 
-    let handler_stop = Arc::clone(&stop_signal);
-    let _ = ctrlc::set_handler(move || {
-        handler_stop.store(true, Ordering::Release);
-    });
-
     let mut handles = Vec::with_capacity(num_threads);
 
     for id in 0..num_threads {
@@ -73,7 +68,9 @@ pub fn run_single_workload(
                     format_number(current_ops),
                     format_number(ops_per_sec)
                 );
-                std::io::stdout().flush().unwrap();
+                if let Err(e) = std::io::stdout().flush() {
+                    eprintln!("Warning: failed to flush progress output: {}", e);
+                }
             }
         });
     }

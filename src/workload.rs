@@ -97,11 +97,17 @@ pub fn stress_memory_bandwidth(iterations: u64, buffer: &mut [u64]) {
 }
 
 pub fn allocate_memory_buffer(size_mb: usize) -> Box<[u64]> {
-    let num_elements = (size_mb * 1024 * 1024) / std::mem::size_of::<u64>();
+    let bytes = size_mb
+        .checked_mul(1024)
+        .and_then(|b| b.checked_mul(1024))
+        .expect("Requested memory size (MB) too large, multiplication overflow");
+
+    let elem_size = std::mem::size_of::<u64>();
+    let num_elements = bytes / elem_size;
 
     let mut buffer = Vec::with_capacity(num_elements);
     for i in 0..num_elements {
-        buffer.push(i as u64 ^ 0xdeadbeef);
+        buffer.push((i as u64) ^ 0xdeadbeef);
     }
     buffer.into_boxed_slice()
 }

@@ -2,7 +2,7 @@ use anstyle::{AnsiColor, Color, Style};
 use clap::Parser;
 
 #[derive(Parser, Debug)]
-#[command(name = "cpu_stress")]
+#[command(name = "locus")]
 #[command(version, about = "CPU stress test with memory subsystem pressure", long_about = None)]
 pub struct Args {
     #[arg(short, long, default_value_t = 0)]
@@ -49,11 +49,11 @@ pub fn print_help() {
     let example = Style::new().fg_color(Some(Color::Ansi(AnsiColor::BrightBlack)));
     let reset = Style::new();
 
-    println!("{}cpu_stress{} {}", cmd, reset, env!("CARGO_PKG_VERSION"));
-    println!("CPU stress testing tool with computational multi-workload types\n");
+    println!("{}locus{} {}", cmd, reset, env!("CARGO_PKG_VERSION"));
+    println!("A configurable CPU stress testing tool with multiple computational workloads.\n");
 
     println!("{}USAGE:{}", header, reset);
-    println!("    {}cpu_stress{} [OPTIONS]\n", cmd, reset);
+    println!("    {}locus{} [OPTIONS]\n", cmd, reset);
 
     println!("{}OPTIONS:{}", header, reset);
 
@@ -156,43 +156,28 @@ pub fn print_help() {
         "  {}# Default balanced stress test for 60 seconds{}",
         example, reset
     );
-    println!("  {}cpu_stress{} -d 60\n", cmd, reset);
+    println!("  {}locus{} -d 60\n", cmd, reset);
 
     println!(
         "  {}# Test RAM latency (pointer-chasing pattern){}",
         example, reset
     );
-    println!(
-        "  {}cpu_stress{} -w memory-latency -d 120 -x 8\n",
-        cmd, reset
-    );
+    println!("  {}locus{} -w memory-latency -d 120 -x 8\n", cmd, reset);
 
     println!(
         "  {}# Saturate memory bandwidth (parallel streams){}",
         example, reset
     );
-    println!(
-        "  {}cpu_stress{} -w memory-bandwidth -d 120 -x 8\n",
-        cmd, reset
-    );
+    println!("  {}locus{} -w memory-bandwidth -d 120 -x 8\n", cmd, reset);
 
     println!("  {}# Run full benchmark suite{}", example, reset);
-    println!("  {}cpu_stress{} --benchmark -d 30\n", cmd, reset);
-
-    println!(
-        "  {}# Extreme stress: 16 threads, 16x memory, 5 minutes{}",
-        example, reset
-    );
-    println!("  {}cpu_stress{} -j 16 -x 16 -d 300\n", cmd, reset);
+    println!("  {}locus{} --benchmark -d 30\n", cmd, reset);
 
     println!(
         "  {}# Manual memory size override (512 MB per thread){}",
         example, reset
     );
-    println!(
-        "  {}cpu_stress{} -w memory-bandwidth -m 512 -d 60",
-        cmd, reset
-    );
+    println!("  {}locus{} -w memory-bandwidth -m 512 -d 60", cmd, reset);
 }
 
 pub fn print_version() {
@@ -201,5 +186,5 @@ pub fn print_version() {
         .fg_color(Some(Color::Ansi(AnsiColor::Green)));
     let reset = Style::new();
 
-    println!("{}cpu_stress{} {}", cmd, reset, env!("CARGO_PKG_VERSION"));
+    println!("{}locus{} {}", cmd, reset, env!("CARGO_PKG_VERSION"));
 }

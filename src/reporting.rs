@@ -34,7 +34,9 @@ pub fn progress_reporter(stop_signal: Arc<AtomicBool>, work_counter: Arc<AtomicU
             format_number(current_ops),
             format_number(ops_per_sec)
         );
-        std::io::stdout().flush().unwrap();
+        if let Err(e) = std::io::stdout().flush() {
+            eprintln!("Warning: failed to flush progress output: {}", e);
+        }
     }
 }
 

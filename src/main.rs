@@ -34,6 +34,16 @@ fn main() {
 
     let args = Args::parse();
 
+    let global_stop = Arc::new(AtomicBool::new(false));
+    {
+        let gs = Arc::clone(&global_stop);
+        if let Err(e) = ctrlc::set_handler(move || {
+            gs.store(true, Ordering::Release);
+        }) {
+            eprintln!("Warning: Failed to set global Ctrl+C handler: {}", e);
+        }
+    }
+
     let num_threads = if args.threads == 0 {
         num_cpus::get()
     } else {
@@ -142,14 +152,6 @@ fn run_single_mode(args: &Args, num_threads: usize, memory_mb: usize) {
 
     let stop_signal = Arc::new(AtomicBool::new(false));
     let work_counter = Arc::new(AtomicU64::new(0));
-
-    let handler_stop = Arc::clone(&stop_signal);
-    if let Err(e) = ctrlc::set_handler(move || {
-        println!("\n[!] Interrupt received. Stopping workers...");
-        handler_stop.store(true, Ordering::Release);
-    }) {
-        eprintln!("Warning: Failed to set Ctrl+C handler: {}", e);
-    }
 
     let mut handles = Vec::with_capacity(num_threads);
 

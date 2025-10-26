@@ -283,7 +283,7 @@ fn get_total_system_ram_mb() -> Option<usize> {
 fn sysctl_u64(name: &str) -> Option<u64> {
     use std::ffi::{CString, c_void};
 
-    extern "C" {
+    unsafe extern "C" {
         fn sysctlbyname(
             name: *const std::os::raw::c_char,
             oldp: *mut c_void,

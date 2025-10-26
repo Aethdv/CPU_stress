@@ -153,31 +153,31 @@ pub fn print_help() {
 
     println!("\n{}EXAMPLES:{}", header, reset);
     println!(
-        "  {}# Default balanced stress test for 60 seconds{}",
+        "  {}# Default balanced stress test for 10 seconds{}",
         example, reset
     );
-    println!("  {}locus{} -d 60\n", cmd, reset);
+    println!("  {}locus{} -d 10\n", cmd, reset);
 
     println!(
-        "  {}# Test RAM latency (pointer-chasing pattern){}",
+        "  {}# Run memory latency workload (pointer-chasing pattern){}",
         example, reset
     );
-    println!("  {}locus{} -w memory-latency -d 120 -x 8\n", cmd, reset);
+    println!("  {}locus{} -w memory-latency -d 10 -x 8\n", cmd, reset);
 
     println!(
-        "  {}# Saturate memory bandwidth (parallel streams){}",
+        "  {}# Run memory bandwidth workload (parallel streams){}",
         example, reset
     );
-    println!("  {}locus{} -w memory-bandwidth -d 120 -x 8\n", cmd, reset);
+    println!("  {}locus{} -w memory-bandwidth -d 10 -x 8\n", cmd, reset);
 
     println!("  {}# Run full benchmark suite{}", example, reset);
-    println!("  {}locus{} --benchmark -d 30\n", cmd, reset);
+    println!("  {}locus{} --benchmark -d 10 -x 8\n", cmd, reset);
 
     println!(
         "  {}# Manual memory size override (512 MB per thread){}",
         example, reset
     );
-    println!("  {}locus{} -w memory-bandwidth -m 512 -d 60", cmd, reset);
+    println!("  {}locus{} -w memory-bandwidth -m 512 -d 10", cmd, reset);
 }
 
 pub fn print_version() {

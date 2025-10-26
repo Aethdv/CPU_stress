@@ -1,3 +1,60 @@
 edition = "2024"
-max_width = 100
-tab_spaces = 4
+style_edition = "2024"
+
+# ── Line & Spacing Aesthetics ──────────────────────────────
+max_width = 96                    # not 97, not 95
+hard_tabs = false                 # Spaces, like civilized people
+tab_spaces = 4                    # The only correct choice
+newline_style = "Unix"            # LF supremacy
+
+# ── Import Perfection ──────────────────────────────────────
+imports_granularity = "Module"     # Perfectly grouped, not too dense
+group_imports = "StdExternalCrate" # std → external → crate, as nature intended
+reorder_imports = true
+reorder_modules = true
+
+# ── Structural Elegance ────────────────────────────────────
+use_field_init_shorthand = true   # Modern and clean
+use_try_shorthand = true          # ? > try!(), fight me
+trailing_comma = "Vertical"       # Git-diff friendly
+match_block_trailing_comma = true
+overflow_delimited_expr = true    # Let expressions breathe
+
+# ── Comment Sophistication ─────────────────────────────────
+wrap_comments = true
+format_code_in_doc_comments = true
+normalize_comments = true        # // is the way
+normalize_doc_attributes = true
+
+# ── Minimalist Touches ─────────────────────────────────────
+remove_nested_parens = true      # Death to ((unnecessary)) parens
+format_strings = false           # Keep your ASCII art intact
+skip_children = false
+
+# ── Chain Formatting Excellence ────────────────────────────
+chain_width = 60                    # Chains get their own lines
+single_line_if_else_max_width = 50  # Keep it readable
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#                     🚀 NIGHTLY ZONE
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+unstable_features = true
+
+# ── Next-Level Import Control ──────────────────────────────
+imports_layout = "HorizontalVertical"  # Smart mixed layout
+imports_indent = "Block"
+
+# ── Spacing Precision ──────────────────────────────────────
+blank_lines_upper_bound = 1
+blank_lines_lower_bound = 0
+
+# # ── Modern Syntax Choices ───────────────────────────────────
+hex_literal_case = "Lower"         # 0xdeadbeef, not 0xDEADBEEF
+trailing_semicolon = false         # Clean block expressions
+match_arm_leading_pipes = "Never"  # No weird pipes
+condense_wildcard_suffixes = true  # ..= is the future
+#
+# # ── Alignment Artistry ──────────────────────────────────────
+struct_field_align_threshold = 20  # Align short structs
+enum_discrim_align_threshold = 20  # Align short enums

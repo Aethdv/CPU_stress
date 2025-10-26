@@ -1,3 +1,8 @@
+#![cfg_attr(target_os = "macos", allow(unused))]
+
+#[cfg(target_os = "macos")]
+compile_error!("macOS is not supported. Please build on Linux or Windows.");
+
 mod benchmark;
 mod cli;
 mod reporting;
@@ -5,14 +10,15 @@ mod system;
 mod worker;
 mod workload;
 
-use benchmark::{display_benchmark_table, run_single_workload};
-use clap::Parser;
-use cli::{Args, print_help, print_version};
-use reporting::format_number;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
+
+use benchmark::{display_benchmark_table, run_single_workload};
+use clap::Parser;
+use cli::{Args, print_help, print_version};
+use reporting::format_number;
 
 fn main() {
     let args_vec: Vec<String> = std::env::args().collect();
@@ -22,12 +28,12 @@ fn main() {
             "--help" | "-h" => {
                 print_help();
                 return;
-            }
+            },
             "--version" | "-V" => {
                 print_version();
                 return;
-            }
-            _ => {}
+            },
+            _ => {},
         }
     }
 
@@ -59,7 +65,7 @@ fn run_benchmark_mode(args: &Args, num_threads: usize, memory_mb: usize) {
     }
 
     println!("════════════════════════════════════════════════════════════");
-    println!("  CPU STRESS BENCHMARK v{}", env!("CARGO_PKG_VERSION"));
+    println!("    Locus BENCHMARK v{}", env!("CARGO_PKG_VERSION"));
     println!("════════════════════════════════════════════════════════════");
     println!("  Threads:    {}", num_threads);
 
@@ -105,15 +111,15 @@ fn run_single_mode(args: &Args, num_threads: usize, memory_mb: usize) {
     let workload = match args.workload.as_str() {
         "integer" | "float" | "memory" | "memory-latency" | "memory-bandwidth" | "mixed" => {
             &args.workload
-        }
+        },
         _ => {
             eprintln!("Invalid workload '{}'. Using 'mixed'.", args.workload);
             "mixed"
-        }
+        },
     };
 
     println!("════════════════════════════════════════════════════════════");
-    println!("  CPU STRESS TEST v{}", env!("CARGO_PKG_VERSION"));
+    println!("          Locus v{}", env!("CARGO_PKG_VERSION"));
     println!("════════════════════════════════════════════════════════════");
     println!("  Threads:    {}", num_threads);
     println!("  Workload:   {}", workload);
@@ -216,7 +222,7 @@ fn print_final_stats(elapsed: Duration, total_ops: u64, workload: &str) {
     };
 
     println!("\n════════════════════════════════════════════════════════════");
-    println!("  STRESS TEST COMPLETE");
+    println!("      TEST COMPLETE");
     println!("════════════════════════════════════════════════════════════");
     println!("  Elapsed:       {:.2}s", elapsed.as_secs_f64());
     println!("  Total ops:     {}", format_number(total_ops));

@@ -23,7 +23,7 @@ pub fn stress_float(iterations: u64, accumulator: &mut f64) {
 }
 
 /// Memory latency test - single pointer-chasing chain
-/// Measures RAM latency (~70-100ns) by forcing sequential dependent loads
+/// (~70-100ns)
 #[inline(always)]
 pub fn stress_memory_latency(iterations: u64, buffer: &mut [u64]) {
     if buffer.is_empty() {
@@ -55,7 +55,8 @@ pub fn stress_memory_bandwidth(iterations: u64, buffer: &mut [u64]) {
     const STREAMS: usize = 8;
     let mut indices = [0usize; STREAMS];
 
-    // Different Linear Congruential Generators (LCG) multipliers for each stream (all coprime)
+    // Different Linear Congruential Generators (LCG) multipliers for each stream
+    // (all coprime)
     const LCG_MULTS: [u64; STREAMS] = [
         6364136223846793005, // Stream 0
         2862933555777941757, // Stream 1
@@ -100,7 +101,7 @@ pub fn allocate_memory_buffer(size_mb: usize) -> Box<[u64]> {
 
     let mut buffer = Vec::with_capacity(num_elements);
     for i in 0..num_elements {
-        buffer.push(i as u64 ^ 0xDEADBEEF);
+        buffer.push(i as u64 ^ 0xdeadbeef);
     }
     buffer.into_boxed_slice()
 }
@@ -209,7 +210,7 @@ mod tests {
         let initial_indices = [0, 1024, 2048, 3072, 4096, 5120, 6144, 7168];
         let modified_in_regions = initial_indices
             .iter()
-            .filter(|&&idx| idx < buffer.len() && buffer[idx] != (idx as u64 ^ 0xDEADBEEF))
+            .filter(|&&idx| idx < buffer.len() && buffer[idx] != (idx as u64 ^ 0xdeadbeef))
             .count();
 
         assert!(

@@ -1,14 +1,15 @@
-use crate::reporting::format_number;
-use crate::worker;
 use std::io::Write;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
 
+use crate::reporting::format_number;
+use crate::worker;
+
 #[derive(Debug, Clone)]
 pub struct WorkloadResult {
-    pub name: String,
+    pub name:        String,
     pub ops_per_sec: u64,
 }
 

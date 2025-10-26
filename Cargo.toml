@@ -1,28 +1,36 @@
 [package]
-name    = "cpu_stress"
-version = "1.4.0"
+name = "locus-cli"
+version = "1.4.1"
 license = "MIT"
-readme  = "README.md"
+readme = "README.md"
 authors = ["Aethdv (aethrdv@gmail.com)"]
 description = "A configurable CPU stress testing tool with multiple computational workloads."
-repository = "https://github.com/Aethdv/CPU_stress"
+repository = "https://github.com/Aethdv/Locus"
+keywords = ["cpu", "benchmark", "stress-test", "performance", "testing"]
+categories = ["command-line-utilities", "development-tools::profiling"]
 edition = "2024"
 rust-version = "1.88.0"
 
+include = ["src/**", "Cargo.toml", "README.md", "LICENSE*"]
+
 [dependencies]
-clap = { version = "4.5.49", features = ["derive", "string"] }
+clap = { version = "4.5.50", features = ["derive", "string"] }
 ctrlc = "3.5.0"
 num_cpus = "1.17.0"
 anstyle = "1.0.13"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61.2", features = [
-    "Win32_System_SystemInformation",
-    "Win32_Foundation",
+  "Win32_System_SystemInformation",
+  "Win32_Foundation",
 ] }
 
 [dev-dependencies]
 criterion = "0.7.0"
+
+[[bin]]
+name = "locus"
+path = "src/main.rs"
 
 [[bench]]
 name = "workload_bench"

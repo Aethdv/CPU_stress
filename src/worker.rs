@@ -1,10 +1,14 @@
-use crate::workload::{
-    allocate_memory_buffer, stress_float, stress_integer, stress_memory_bandwidth,
-    stress_memory_latency,
-};
 use std::hint::black_box;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+
+use crate::workload::{
+    allocate_memory_buffer,
+    stress_float,
+    stress_integer,
+    stress_memory_bandwidth,
+    stress_memory_latency,
+};
 
 pub fn worker_thread(
     id: usize,
@@ -32,7 +36,7 @@ pub fn worker_thread(
                 stress_integer(batch_size / 3, &mut int_acc);
                 stress_float(batch_size / 3, &mut float_acc);
                 stress_memory_latency(batch_size / 3, &mut mem_buffer);
-            }
+            },
         }
 
         work_counter.fetch_add(batch_size, Ordering::Relaxed);
@@ -45,9 +49,10 @@ pub fn worker_thread(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::thread;
     use std::time::Duration;
+
+    use super::*;
 
     #[test]
     fn test_worker_respects_stop_flag() {

@@ -1,5 +1,6 @@
-use criterion::{Criterion, criterion_group, criterion_main};
 use std::hint::black_box as std_black_box;
+
+use criterion::{Criterion, criterion_group, criterion_main};
 
 #[inline(always)]
 fn stress_integer(iterations: u64, accumulator: &mut u64) {

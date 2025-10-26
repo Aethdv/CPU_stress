@@ -17,16 +17,19 @@ pub fn detect_memory_size(multiplier: usize) -> usize {
                     "[Auto-detect] L3 cache: {} MB → Calculated {} MB buffer per thread ({}x multiplier)",
                     l3_mb, recommended, multiplier
                 );
+
                 eprintln!(
                     "[Warning] Total allocation would be {} MB ({} threads × {} MB)",
                     total_allocation_mb, num_cpus, recommended
                 );
+
                 eprintln!(
                     "[Warning] Exceeds {}% of system RAM ({} MB total, {} MB limit)",
                     (RAM_SAFETY_FACTOR * 100.0) as usize,
                     total_ram_mb,
                     max_safe_mb
                 );
+
                 eprintln!(
                     "[Auto-detect] Reducing to {} MB per thread (total: {} MB)",
                     adjusted,
@@ -75,12 +78,7 @@ fn detect_l3_cache() -> Option<usize> {
         detect_l3_cache_windows()
     }
 
-    #[cfg(target_os = "macos")]
-    {
-        detect_l3_cache_macos()
-    }
-
-    #[cfg(not(any(target_os = "linux", target_os = "windows", target_os = "macos")))]
+    #[cfg(not(any(target_os = "linux", target_os = "windows")))]
     {
         None
     }
@@ -109,8 +107,11 @@ fn detect_l3_cache_linux() -> Option<usize> {
 #[cfg(target_os = "windows")]
 fn detect_l3_cache_windows() -> Option<usize> {
     use std::mem;
+
     use windows_sys::Win32::System::SystemInformation::{
-        GetLogicalProcessorInformationEx, RelationCache, SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX,
+        GetLogicalProcessorInformationEx,
+        RelationCache,
+        SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX,
     };
 
     unsafe {
@@ -132,8 +133,8 @@ fn detect_l3_cache_windows() -> Option<usize> {
         while offset + mem::size_of::<SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>()
             <= buffer_size as usize
         {
-            let info =
-                &*(buffer.as_ptr().add(offset) as *const SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX);
+            let info = &*(buffer.as_ptr().add(offset)
+                as *const SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX);
 
             if info.Relationship == RelationCache {
                 let cache_info_ptr =
@@ -161,53 +162,11 @@ fn detect_l3_cache_windows() -> Option<usize> {
 #[cfg(target_os = "windows")]
 #[repr(C)]
 struct CacheDescriptor {
-    Level: u8,
+    Level:         u8,
     Associativity: u8,
-    LineSize: u16,
-    CacheSize: u32,
-    Type: u32,
-}
-
-#[cfg(target_os = "macos")]
-fn detect_l3_cache_macos() -> Option<usize> {
-    use std::process::Command;
-
-    if let Ok(output) = Command::new("sysctl")
-        .arg("-n")
-        .arg("hw.l3cachesize")
-        .output()
-    {
-        if output.status.success() {
-            if let Ok(size_str) = String::from_utf8(output.stdout) {
-                if let Ok(size_bytes) = size_str.trim().parse::<usize>() {
-                    if size_bytes > 0 {
-                        return Some(size_bytes / (1024 * 1024));
-                    }
-                }
-            }
-        }
-    }
-
-    if let Ok(output) = Command::new("sysctl").arg("hw.cachesize").output() {
-        if output.status.success() {
-            if let Ok(output_str) = String::from_utf8(output.stdout) {
-                for line in output_str.lines() {
-                    if line.starts_with("hw.cachesize:") {
-                        let parts: Vec<&str> = line.split_whitespace().collect();
-                        if parts.len() > 3 {
-                            if let Ok(l3_bytes) = parts[3].parse::<usize>() {
-                                if l3_bytes > 0 {
-                                    return Some(l3_bytes / (1024 * 1024));
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    None
+    LineSize:      u16,
+    CacheSize:     u32,
+    Type:          u32,
 }
 
 fn parse_cache_size(s: &str) -> Option<usize> {
@@ -240,12 +199,17 @@ fn get_total_system_ram_mb() -> Option<usize> {
                 }
             }
         }
+        None
     }
 
     #[cfg(target_os = "windows")]
     {
         use std::mem;
-        use windows_sys::Win32::System::SystemInformation::{GlobalMemoryStatusEx, MEMORYSTATUSEX};
+
+        use windows_sys::Win32::System::SystemInformation::{
+            GlobalMemoryStatusEx,
+            MEMORYSTATUSEX,
+        };
 
         unsafe {
             let mut mem_info: MEMORYSTATUSEX = mem::zeroed();
@@ -256,24 +220,13 @@ fn get_total_system_ram_mb() -> Option<usize> {
                 return Some(total_mb);
             }
         }
+        None
     }
 
-    #[cfg(target_os = "macos")]
+    #[cfg(not(any(target_os = "linux", target_os = "windows")))]
     {
-        use std::process::Command;
-
-        if let Ok(output) = Command::new("sysctl").arg("-n").arg("hw.memsize").output() {
-            if output.status.success() {
-                if let Ok(size_str) = String::from_utf8(output.stdout) {
-                    if let Ok(size_bytes) = size_str.trim().parse::<usize>() {
-                        return Some(size_bytes / (1024 * 1024));
-                    }
-                }
-            }
-        }
+        None
     }
-
-    None
 }
 
 #[cfg(test)]
